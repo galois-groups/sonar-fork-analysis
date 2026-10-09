@@ -35,6 +35,12 @@ import {
 } from './direct.js'
 import { jobEnvironment, toolEnvironment } from './environment.js'
 import { readInputs, type Inputs } from './inputs.js'
+import {
+  definitions,
+  languagesHost,
+  serverLanguages,
+  untestedLanguages
+} from './languages.js'
 import { resolveMode } from './mode.js'
 import {
   choosePullRequest,
@@ -491,15 +497,21 @@ async function analyzeCommit(
   const properties = resolved.properties
   if (!properties.has('sonar.projectBaseDir'))
     properties.set('sonar.projectBaseDir', workspace)
+  const languages = await serverLanguages(
+    languagesHost(inputs.hostUrl, inputs.buildArguments),
+    inputs.token
+  )
   const trusted = trustedProperties(
     inputs,
     { headSha: origin.headSha, pullRequest, branch: origin.branch },
-    join(temp, 'scannerwork')
+    join(temp, 'scannerwork'),
+    languages
   )
   for (const [key, value] of trusted) properties.set(key, value)
   const settingsFile = join(temp, 'sonar-project.properties')
   writeFileSync(settingsFile, formatProperties(properties))
 
+  logUntestedLanguages(untestedLanguages(languages), inputs.buildArguments)
   const scanner = await installScanner()
   core.info(`Analysing ${name}`)
   const env = toolEnvironment()
@@ -532,6 +544,26 @@ async function analyzeCommit(
   if (exitCode !== 0)
     throw new Error(`The Sonar scanner failed with exit code ${exitCode}`)
   return { analysed: true }
+}
+
+function logUntestedLanguages(
+  languages: string[],
+  buildArguments: string[]
+): void {
+  const turnedOn = definitions(buildArguments)
+    .map(([key]) => key)
+    .filter((key) => key.startsWith('sonar.lang.patterns.'))
+  const off = languages.filter(
+    (language) => !turnedOn.includes(`sonar.lang.patterns.${language}`)
+  )
+  if (off.length > 0)
+    core.info(
+      `The analyzers of languages this action isn't tested with stay off: ${off.join(', ')}. To turn one on, set sonar.lang.patterns.<language> in build-arguments.`
+    )
+  for (const key of new Set(turnedOn))
+    core.info(
+      `build-arguments set ${key}: that language's analyzer runs with the token.`
+    )
 }
 
 // Whether the run a workflow_run follows built code that no one with write access put here: a pull

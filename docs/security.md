@@ -15,7 +15,8 @@ with. [How it works](how-it-works.md#what-the-sonar-workflow-does) has the
 details. It also explains how this project tests them against Sonar's real
 scanner.
 
-This page covers what's left for you to decide.
+This page covers what stays off on the fork path, what a fork can still
+influence and how to harden your setup.
 
 ## What stays off on the fork path
 

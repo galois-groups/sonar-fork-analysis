@@ -165,10 +165,13 @@ if: >
 
 ### Builds that don't always run the action
 
-The Sonar workflow expects every build it follows to have run the action.
-Otherwise it reports that the build left nothing to analyse. If the build
-ignores some changes, ignore them in the build's trigger. The Sonar workflow
-then never starts:
+GitHub starts the Sonar workflow whenever the build workflow completes. It does
+so even when the build skipped the job or step that runs the action. The Sonar
+workflow then finds nothing to analyse and says so in a notice. It also posts a
+failed status if it has `statuses: write`. There are two ways to avoid this.
+
+Skip the whole build workflow in its trigger. Then neither the build nor the
+Sonar workflow runs. For example, to ignore changes to the docs:
 
 ```yaml
 on:
@@ -176,7 +179,9 @@ on:
     paths-ignore: ['docs/**']
 ```
 
-If the build skips the action on some events, skip them in the Sonar job too:
+If the build skips only the job or step that runs the action, skip the Sonar job
+on the same events instead. For example, when scheduled builds don't run the
+action:
 
 ```yaml
 if: >

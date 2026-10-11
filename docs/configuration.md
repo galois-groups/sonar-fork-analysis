@@ -13,7 +13,7 @@ recipes for common setups, supported runners and limitations.
 | `sonar-host-url`     | For SonarQube Server  |                    | The server URL. Leave it empty for SonarQube Cloud or to use the `SONAR_HOST_URL` environment variable. Direct analyses also fall back to the build's own `sonar.host.url`. The Sonar workflow doesn't. |
 | `mode`               | No                    | `auto`             | `auto` picks the mode, see [how it works](how-it-works.md#the-two-workflows). `direct`, `prepare` or `analyze` forces one.                                                                              |
 | `working-directory`  | No                    | `.`                | The directory holding the project.                                                                                                                                                                      |
-| `build-tool`         | No                    | `auto`             | `auto`, `maven`, `gradle` or `scanner`, see [other projects](../README.md#other-projects).                                                                                                              |
+| `build-tool`         | No                    | `auto`             | `auto`, `maven`, `gradle` or `scanner`, see [other projects](../README.md#if-you-run-your-build-everything-else).                                                                                       |
 | `build-goals`        | No                    | `verify` / `check` | Maven goals or Gradle tasks to run. Not with `scanner`.                                                                                                                                                 |
 | `build-arguments`    | No                    |                    | Extra build flags. In the Sonar workflow they're passed to the scanner instead, for example `-Dsonar.projectName=App`. The scanner doesn't run in the checkout there, so use absolute paths.            |
 | `checkout`           | No                    | `true`             | Whether the Sonar workflow checks out the analysed commit. Set it to `false` to check out yourself, see [your own checkout](#your-own-checkout).                                                        |
@@ -240,8 +240,9 @@ read that code there.
 ### Caching the Sonar scanner
 
 The action downloads Sonar's scanner every time it runs it: in the Sonar
-workflow, and in the build of [other projects](../README.md#other-projects).
-That's about 50 MB. The action keeps the download in
+workflow, and in the build of
+[other projects](../README.md#if-you-run-your-build-everything-else). That's
+about 50 MB. The action keeps the download in
 `${{ runner.tool_cache }}/sonar-fork-analysis` and checks it against the pinned
 checksum before each use. So caching that directory is safe. In the build, add
 this before the action:

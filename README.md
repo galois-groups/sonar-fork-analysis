@@ -47,14 +47,14 @@ Coming from v1? It no longer gets fixes, not even security fixes. See
 
 ## Supported projects
 
-| Project                                                      | What the action does             | Tested |
-| ------------------------------------------------------------ | -------------------------------- | ------ |
-| Maven, Gradle                                                | Runs the build                   | Yes    |
-| npm, pnpm                                                    | Runs after your build and tests  | Yes    |
-| Yarn with `nodeLinker: node-modules`, Bun                    | Runs after your build and tests  | No     |
-| Yarn Plug'n'Play                                             | Runs after your build and tests¹ | No     |
-| Python, Go, PHP and others with a `sonar-project.properties` | Runs after your build and tests² | No     |
-| .NET, C, C++ and Objective-C                                 | Not supported³                   |        |
+| Project                                                      | What the action does                                                       | Tested |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------- | ------ |
+| Maven, Gradle                                                | [Runs the build](#if-the-action-runs-your-build-maven-and-gradle)          | Yes    |
+| npm, pnpm                                                    | [Runs after your build and tests](#if-you-run-your-build-everything-else)  | Yes    |
+| Yarn with `nodeLinker: node-modules`, Bun                    | [Runs after your build and tests](#if-you-run-your-build-everything-else)  | No     |
+| Yarn Plug'n'Play                                             | [Runs after your build and tests](#if-you-run-your-build-everything-else)¹ | No     |
+| Python, Go, PHP and others with a `sonar-project.properties` | [Runs after your build and tests](#if-you-run-your-build-everything-else)² | No     |
+| .NET, C, C++ and Objective-C                                 | Not supported³                                                             |        |
 
 ¹ Rules that need types find fewer issues because there's no `node_modules` to
 read the types from. Setting `nodeLinker: node-modules` avoids this.
@@ -102,86 +102,57 @@ why the others stay off.
 
 ## Setup
 
-1. Create a Sonar token and save it as the repository secret `SONAR_TOKEN`.
-   SonarQube Cloud's free plan only has personal tokens, so use a dedicated one
-   named after your repository. Paid plans can use a
-   [scoped organization token](https://docs.sonarsource.com/sonarqube-cloud/administering-sonarcloud/managing-organization/scoped-organization-tokens)
-   with only _Execute analysis_ on the project. An expiry date is optional, but
-   a token without one is removed after 60 days without use.
-2. Gradle builds need the `org.sonarqube` plugin, 2.1 or later. Maven builds
-   need nothing. The action runs the version of `sonar-maven-plugin` that your
-   pom pins in `<plugins>` or `<pluginManagement>`. That version must be 3.2 or
-   later. If your pom pins none, the action runs the latest. Dependabot can keep
-   either up to date.
-3. In your build workflow, put the action in place of your build step:
+### 1. Create a Sonar token
 
-   ```yaml
-   steps:
-     # Your existing checkout and Java setup. Sonar needs the full history.
-     - uses: actions/checkout@v7
-       with:
-         fetch-depth: 0
-     - uses: actions/setup-java@v6
-       with:
-         distribution: temurin
-         java-version: 21
-     # Add this in place of your build step.
-     - uses: galois-groups/sonar-fork-analysis@v2
-       with:
-         project-key: my-org_my-project
-         sonar-organization: my-org
-         sonar-token: ${{ secrets.SONAR_TOKEN }}
-   ```
+Create a Sonar token and save it as the repository secret `SONAR_TOKEN`.
+SonarQube Cloud's free plan only has personal tokens, so use a dedicated one
+named after your repository. Paid plans can use a
+[scoped organization token](https://docs.sonarsource.com/sonarqube-cloud/administering-sonarcloud/managing-organization/scoped-organization-tokens)
+with only _Execute analysis_ on the project. An expiry date is optional, but a
+token without one is removed after 60 days without use.
 
-   The action runs the build itself: `verify` for Maven and `check` for Gradle.
-   [`build-goals`](docs/configuration.md#inputs) changes that. Your build
-   workflow must run on `pull_request`, not `pull_request_target`. With
-   `pull_request_target`, a fork's code would run with your secrets, so the
-   action refuses to build there.
+### 2. Add the action to your build workflow
 
-4. Add the Sonar workflow, triggered by the build:
+What you add depends on who runs the build. Either way, your build workflow must
+run on `pull_request`, not `pull_request_target`. With `pull_request_target`, a
+fork's code would run with your secrets, so the action refuses to build there.
 
-   ```yaml
-   name: Sonar
-   on:
-     workflow_run:
-       workflows: [Build]
-       types: [completed]
-   jobs:
-     sonar:
-       if: github.event.workflow_run.conclusion == 'success'
-       runs-on: ubuntu-latest
-       permissions:
-         actions: read
-         contents: read
-         pull-requests: read
-         statuses: write
-       steps:
-         - uses: galois-groups/sonar-fork-analysis@v2
-           with:
-             project-key: my-org_my-project
-             sonar-organization: my-org
-             sonar-token: ${{ secrets.SONAR_TOKEN }}
-   ```
+#### If the action runs your build: Maven and Gradle
 
-   Put your build workflow's name in `workflows`, here `Build`. Use the same
-   `project-key` in both workflows because it also names the artifact.
-   `statuses: write` is optional: it lets the action post a status on the pull
-   request.
+Put the action in place of your build step. It runs `verify` for Maven and
+`check` for Gradle. [`build-goals`](docs/configuration.md#inputs) changes that.
 
-5. To block merging until the analysis passes, require Sonar's own check. See
-   [required checks](docs/configuration.md#commit-statuses-and-required-checks).
+```yaml
+steps:
+  # Your existing checkout and Java setup. Sonar needs the full history.
+  - uses: actions/checkout@v7
+    with:
+      fetch-depth: 0
+  - uses: actions/setup-java@v6
+    with:
+      distribution: temurin
+      java-version: 21
+  # Add this in place of your build step.
+  - uses: galois-groups/sonar-fork-analysis@v2
+    with:
+      project-key: my-org_my-project
+      sonar-organization: my-org
+      sonar-token: ${{ secrets.SONAR_TOKEN }}
+```
 
-Then read [security](docs/security.md). It lists what a fork can still influence
-and how to harden your setup.
+Gradle builds need version 2.1 or later of the `org.sonarqube` plugin. Maven
+builds need nothing. The action runs the version of `sonar-maven-plugin` that
+your pom pins in `<plugins>` or `<pluginManagement>`. That version must be 3.2
+or later. If your pom pins none, the action runs the latest. Dependabot can keep
+either up to date.
 
-### Other projects
+#### If you run your build: everything else
 
-Other projects include JavaScript, TypeScript, Python, Go and PHP. For them, the
-action doesn't build anything. Add it after your own build and test steps. It
-runs Sonar's scanner, as Sonar's own scan action does. The scanner reads its
-settings from your `sonar-project.properties`. The action recognises these
-projects by that file or by a `package.json`. For a Node project:
+This covers JavaScript, TypeScript, Python, Go, PHP and other languages. Add the
+action after your own build and test steps. It runs Sonar's scanner, as Sonar's
+own scan action does. The scanner reads its settings from your
+`sonar-project.properties`. The action recognises these projects by that file or
+by a `package.json`. For a Node project:
 
 ```yaml
 steps:
@@ -218,6 +189,46 @@ For a Node project, the action also passes the type declarations in your
 `node_modules` to the Sonar workflow. It passes the links your package manager
 makes there too. Rules that need types then work on pull requests from forks as
 well, even across the packages of a monorepo.
+
+### 3. Add the Sonar workflow
+
+The Sonar workflow is the same for every project. It runs after the build:
+
+```yaml
+name: Sonar
+on:
+  workflow_run:
+    workflows: [Build]
+    types: [completed]
+jobs:
+  sonar:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+      statuses: write
+    steps:
+      - uses: galois-groups/sonar-fork-analysis@v2
+        with:
+          project-key: my-org_my-project
+          sonar-organization: my-org
+          sonar-token: ${{ secrets.SONAR_TOKEN }}
+```
+
+Put your build workflow's name in `workflows`, here `Build`. Use the same
+`project-key` in both workflows because it also names the artifact.
+`statuses: write` is optional: it lets the action post a status on the pull
+request.
+
+### 4. Require Sonar's check
+
+To block merging until the analysis passes, require Sonar's own check. See
+[required checks](docs/configuration.md#commit-statuses-and-required-checks).
+
+Then read [security](docs/security.md). It lists what a fork can still influence
+and how to harden your setup.
 
 ## Real-world examples
 

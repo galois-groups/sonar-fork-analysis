@@ -145,9 +145,9 @@ jobs:
           sonar-token: ${{ secrets.SONAR_TOKEN }}
 ```
 
-Say the build skips a project because none of its files changed. That project's
-Sonar job then ends without doing anything, as long as the build prepared
-another project. If the build skips them all, see
+The build may skip a project when none of its files changed. That project's
+Sonar job then ends without doing anything. This works as long as the build
+prepared at least one other project. If the build skips them all, see
 [builds that don't always run the action](#builds-that-dont-always-run-the-action).
 
 ### Skipping runs with nothing to do

@@ -74848,7 +74848,7 @@ async function resolveOrigin(context) {
 			const [owner = ""] = run.head_repository.full_name.split("/");
 			origin.pullRequests = await findPullRequests(context, owner, run.head_branch, run.head_sha);
 			if (origin.pullRequests.length === 0) return { skip: `No open pull request has ${run.head_sha} as its head any more; a newer run analyses it.` };
-		} else if (run.head_repository.full_name.toLowerCase() !== context.repository.toLowerCase()) return { skip: `The run analyses ${run.head_repository.full_name}, not this repository, and is not for a pull request.` };
+		} else if (run.head_repository.full_name.toLowerCase() !== context.repository.toLowerCase()) return { skip: `The run comes from a branch of ${run.head_repository.full_name} rather than a pull request: nothing to analyse.` };
 		else if (run.head_branch && run.head_branch !== event.repository.default_branch) origin.branch = run.head_branch;
 		return origin;
 	}

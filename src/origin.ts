@@ -180,7 +180,7 @@ export async function resolveOrigin(
       // A fork's pull request can add a workflow with the same name on another event; its branch
       // must not pass for one of ours.
       return {
-        skip: `The run analyses ${run.head_repository.full_name}, not this repository, and is not for a pull request.`
+        skip: `The run comes from a branch of ${run.head_repository.full_name} rather than a pull request: nothing to analyse.`
       }
     } else if (
       run.head_branch &&

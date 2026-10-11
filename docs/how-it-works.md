@@ -119,8 +119,8 @@ job with an empty workspace.
 
 If a step before the action already checked out, the action uses that checkout
 and leaves it in place. It checks that the checkout is at the analysed commit,
-with full history and no stored credentials. `origin` must be your repository,
-and the workspace must hold nothing the commit doesn't have.
+with full history and no stored credentials. `origin` must be your repository.
+The workspace must hold nothing the commit doesn't have.
 
 Then the action removes two kinds of files the scanner would otherwise trust:
 

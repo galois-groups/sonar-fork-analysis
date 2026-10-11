@@ -1,8 +1,9 @@
 import * as core from '@actions/core'
 import { getExecOutput } from '@actions/exec'
-import { readdirSync, realpathSync, rmSync } from 'node:fs'
+import { readdirSync, rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { toolEnvironment } from './environment.js'
+import { realPath } from './real-path.js'
 import { retry } from './retry.js'
 
 // Never wait for a password, and never let the checkout's attributes send git-lfs to a server.
@@ -111,9 +112,11 @@ export async function prepareCheckout(
   core.info('Analysing the checkout already in the workspace')
 }
 
+// git spells paths its own way: forward slashes and, on Windows, long names where the workspace may
+// have short ones such as RUNNER~1.
 function sameDirectory(a: string, b: string): boolean {
   try {
-    return realpathSync(a) === realpathSync(b)
+    return realPath(a) === realPath(b)
   } catch {
     return false
   }

@@ -65,13 +65,15 @@ about the pull request, not as a review of it.
   [the Sonar scanner's directory](configuration.md#caching-the-sonar-scanner),
   because the action checks the scanner against its checksum every time.
 - Keep the Sonar token away from builds of pull requests from forks and from
-  Dependabot. GitHub withholds it from those builds unless you change one of two
-  settings. Leave both alone. Don't let a private repository send secrets to
-  pull requests from forks. Don't add `SONAR_TOKEN` to Dependabot's secrets.
+  Dependabot. GitHub already withholds it from both. Don't undo that:
+  - in a private repository, leave _Send secrets to workflows from pull
+    requests_ off (Settings → Actions → General, under _Fork pull request
+    workflows_);
+  - don't add `SONAR_TOKEN` to your Dependabot secrets.
 - Use a dedicated Sonar token, as the [setup](../README.md#setup) describes.
 - If you want an extra layer, require approval before workflows from outside
-  contributors run (Settings → Actions → General). The analysis is safe without
-  it.
+  contributors run (Settings → Actions → General). It's optional: the action
+  keeps the token safe without it.
 
 If you use `checkout: false`, CodeQL may flag your checkout step with
 `actions/untrusted-checkout`. It warns about pull request code checked out in a

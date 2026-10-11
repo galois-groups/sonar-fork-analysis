@@ -1,6 +1,6 @@
 import * as core from '@actions/core'
 import { getExecOutput } from '@actions/exec'
-import { readdirSync, rmSync } from 'node:fs'
+import { existsSync, readdirSync, rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { toolEnvironment } from './environment.js'
 import { realPath } from './real-path.js'
@@ -87,29 +87,40 @@ export async function checkoutCommit(
 
 const OWN_CHECKOUT = 'own-checkout'
 
+const SHARED_WORKSPACE =
+  'On a self-hosted runner, another job may have left its files in the workspace: empty it before the action'
+
 // The workspace decides. Empty, the action checks out itself and cleans up after the job. A checkout
-// there is the user's: the action only verifies it and leaves it alone.
+// there is the user's: the action only verifies it and leaves it alone. Resolves to whether it is
+// the user's.
 export async function prepareCheckout(
   workspace: string,
   checkout: Checkout
-): Promise<void> {
+): Promise<boolean> {
   if (readdirSync(workspace).length === 0) {
     // Saved first, so the post step also cleans up after a checkout that failed half-way.
     core.saveState(OWN_CHECKOUT, 'true')
     await checkoutCommit(workspace, checkout)
-    return
+    return false
   }
-  const { exitCode, stdout } = await git(workspace, [
+  const noCheckout = new Error(
+    `The workspace holds files but no checkout: remove the step that writes them or check out the analysed commit there. ${SHARED_WORKSPACE}`
+  )
+  // Without .git, a repository further up would pass for one, with the workspace a directory in it.
+  if (!existsSync(join(workspace, '.git'))) throw noCheckout
+  const { exitCode, stdout, stderr } = await git(workspace, [
     'rev-parse',
     '--show-toplevel'
   ])
-  // A repository further up would pass for one, with the workspace as just a directory in it.
-  if (exitCode !== 0 || !sameDirectory(stdout.trim(), workspace)) {
+  // Such as dubious ownership, when an earlier job left the files of another user.
+  if (exitCode !== 0) {
     throw new Error(
-      'The workspace holds files but no checkout: remove the step that writes them or check out the analysed commit there'
+      `Could not tell whether the workspace holds a checkout: ${stderr.trim()}`
     )
   }
+  if (!sameDirectory(stdout.trim(), workspace)) throw noCheckout
   core.info('Analysing the checkout already in the workspace')
+  return true
 }
 
 // git spells paths its own way: forward slashes and, on Windows, long names where the workspace may
@@ -127,39 +138,76 @@ function sameDirectory(a: string, b: string): boolean {
 export function cleanUpCheckout(): void {
   const workspace = process.env.GITHUB_WORKSPACE
   if (core.getState(OWN_CHECKOUT) !== 'true' || !workspace) return
+  let entries: string[]
   try {
-    for (const entry of readdirSync(resolve(workspace)))
+    entries = readdirSync(resolve(workspace))
+  } catch (error) {
+    cleanUpFailed(error)
+    return
+  }
+  // One by one, so a file that can't go doesn't keep the others.
+  for (const entry of entries) {
+    try {
       rmSync(join(workspace, entry), {
         recursive: true,
         force: true,
         maxRetries: 3
       })
-  } catch (error) {
-    core.warning(
-      `Could not clean up the workspace: ${error instanceof Error ? error.message : String(error)}`
-    )
+    } catch (error) {
+      cleanUpFailed(error)
+    }
   }
 }
 
-// GitHub accepts a repository's URL with or without .git, and in any case.
-function sameRepository(url: string, expected: string): boolean {
-  const normal = (value: string) => {
-    let result = value.toLowerCase()
-    while (result.endsWith('/')) result = result.slice(0, -1)
-    return result.endsWith('.git') ? result.slice(0, -4) : result
+function cleanUpFailed(error: unknown): void {
+  core.warning(
+    `Could not clean up the workspace: ${error instanceof Error ? error.message : String(error)}`
+  )
+}
+
+// The host and path a remote's URL names. The same repository has several: https, ssh://, the
+// git@host:path form, with or without .git, in any case and with any port.
+function repositoryLocation(url: string): string {
+  let rest = url.trim().toLowerCase()
+  const scheme = rest.indexOf('://')
+  if (scheme > 0) {
+    rest = rest.slice(scheme + 3)
+  } else {
+    const colon = rest.indexOf(':')
+    if (colon > 0 && !rest.slice(0, colon).includes('/'))
+      rest = `${rest.slice(0, colon)}/${rest.slice(colon + 1)}`
   }
-  return normal(url) === normal(expected)
+  const slash = rest.indexOf('/')
+  let host = slash < 0 ? rest : rest.slice(0, slash)
+  const path = slash < 0 ? '' : rest.slice(slash)
+  host = host.slice(host.lastIndexOf('@') + 1)
+  const port = host.lastIndexOf(':')
+  if (port >= 0 && /^\d+$/.test(host.slice(port + 1)))
+    host = host.slice(0, port)
+  let location = host + path
+  while (location.endsWith('/')) location = location.slice(0, -1)
+  return location.endsWith('.git') ? location.slice(0, -4) : location
+}
+
+// A user and password before the host: git keeps them in .git/config, next to the analysed code.
+function holdsCredentials(url: string): boolean {
+  const scheme = url.indexOf('://')
+  if (scheme < 0 || !/^https?$/i.test(url.slice(0, scheme))) return false
+  const rest = url.slice(scheme + 3)
+  const slash = rest.indexOf('/')
+  return (slash < 0 ? rest : rest.slice(0, slash)).includes('@')
 }
 
 export async function verifyCheckout(
   workspace: string,
   sha: string,
-  repositoryUrl: string
+  repositoryUrl: string,
+  adopted: boolean
 ): Promise<void> {
   const head = await required(workspace, ['rev-parse', 'HEAD'])
   if (head !== sha) {
     throw new Error(
-      `The checkout is at ${head} but the analysis is for ${sha}: check out that commit. On a self-hosted runner, an interrupted earlier run may have left its checkout: clean the workspace`
+      `The checkout is at ${head} but the analysis is for ${sha}: check out that commit. ${SHARED_WORKSPACE}`
     )
   }
   if (
@@ -184,22 +232,39 @@ export async function verifyCheckout(
       'The checkout stored credentials in .git/config: check out with persist-credentials false'
     )
   }
+  // The action's own checkout has the right origin and nothing else by construction. git can even
+  // report its files as changed, for instance with line endings .gitattributes rewrites.
+  if (adopted) await verifyAdopted(workspace, repositoryUrl)
+}
+
+async function verifyAdopted(
+  workspace: string,
+  repositoryUrl: string
+): Promise<void> {
   // Sonar finds the base branch on origin. A fork's copy of it could be anything.
   const origin = await git(workspace, ['remote', 'get-url', 'origin'])
+  const url = origin.stdout.trim()
+  if (holdsCredentials(url)) {
+    throw new Error(
+      "The checkout's origin holds credentials: check out without them in the URL"
+    )
+  }
   if (
     origin.exitCode !== 0 ||
-    !sameRepository(origin.stdout.trim(), repositoryUrl)
+    repositoryLocation(url) !== repositoryLocation(repositoryUrl)
   ) {
     throw new Error(
       `The checkout's origin is not ${repositoryUrl}, where Sonar looks for the base branch: check out from this repository`
     )
   }
-  // Anything a step added or changed would be analysed as the pull request's code.
+  // Anything a step added or changed would be analysed as the pull request's code. The pull
+  // request's .gitmodules could otherwise hide its submodules from the check.
   const status = await git(workspace, [
     'status',
     '--porcelain',
     '--ignored',
-    '--untracked-files=all'
+    '--untracked-files=all',
+    '--ignore-submodules=none'
   ])
   if (status.exitCode !== 0) {
     throw new Error(
@@ -210,7 +275,7 @@ export async function verifyCheckout(
   const first = status.stdout.split('\n').find((line) => line !== '')
   if (first !== undefined) {
     throw new Error(
-      `The checkout holds files that aren't the analysed commit's, such as ${first.slice(3)}: remove the steps that write them`
+      `The checkout holds files that aren't the analysed commit's, such as ${first.slice(3)}: remove the steps that write them. ${SHARED_WORKSPACE}`
     )
   }
 }

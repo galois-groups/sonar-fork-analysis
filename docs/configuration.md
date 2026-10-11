@@ -125,7 +125,9 @@ jobs:
           sonar-token: ${{ secrets.SONAR_TOKEN }}
 ```
 
-The Sonar workflow only needs the project keys:
+The Sonar workflow only needs the project keys. Each project needs its own job
+there: in one job, a second analysis would find the first one's checkout and
+stop.
 
 ```yaml
 jobs:
@@ -241,6 +243,24 @@ read your other repositories. A fork can change `.gitmodules` to point a
 submodule at any of them. The checkout then fetches that repository. Its code
 goes to Sonar with the analysis. If your Sonar project is public, anyone can
 read that code there.
+
+### Self-hosted runners
+
+GitHub's hosted runners give every job a fresh workspace. A self-hosted runner
+gives all jobs of a repository the same workspace and keeps it between jobs. The
+action deletes its own checkout at the end of the job, but other jobs leave
+their files. If the Sonar workflow shares a runner with your build, empty the
+workspace before the action:
+
+```yaml
+- run: find "$GITHUB_WORKSPACE" -mindepth 1 -delete
+- uses: galois-groups/sonar-fork-analysis@v2
+  with:
+    # …
+```
+
+Don't let that runner build pull requests from forks, though. See
+[hardening your setup](security.md#hardening-your-setup).
 
 ### Caching the Sonar scanner
 

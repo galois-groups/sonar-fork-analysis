@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'node:child_process'
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -11,6 +12,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import * as core from '../__fixtures__/core.js'
+import { posixIt } from '../__fixtures__/platform.js'
 
 vi.doMock('@actions/core', () => core)
 
@@ -87,7 +89,7 @@ describe('checkoutCommit', () => {
     expect(git(workspace, 'rev-parse', 'HEAD')).toBe(first)
     expect(git(workspace, 'rev-parse', '--is-shallow-repository')).toBe('false')
     await expect(
-      verifyCheckout(workspace, first, origin())
+      verifyCheckout(workspace, first, origin(), false)
     ).resolves.toBeUndefined()
   })
 
@@ -129,11 +131,13 @@ describe('prepareCheckout', () => {
   const checkout = { repository: 'owner/repo', token: 'a-token' }
 
   it('checks out an empty workspace itself, and notes it for the clean-up', async () => {
-    await prepareCheckout(workspace, {
-      ...checkout,
-      serverUrl: `file://${server}`,
-      sha: first
-    })
+    await expect(
+      prepareCheckout(workspace, {
+        ...checkout,
+        serverUrl: `file://${server}`,
+        sha: first
+      })
+    ).resolves.toBe(false)
 
     expect(git(workspace, 'rev-parse', 'HEAD')).toBe(first)
     expect(core.saveState).toHaveBeenCalledWith('own-checkout', 'true')
@@ -142,11 +146,13 @@ describe('prepareCheckout', () => {
   it('takes the checkout already in the workspace as it is', async () => {
     git(root, 'clone', '--quiet', origin(), workspace)
 
-    await prepareCheckout(workspace, {
-      ...checkout,
-      serverUrl: `file://${server}`,
-      sha: first
-    })
+    await expect(
+      prepareCheckout(workspace, {
+        ...checkout,
+        serverUrl: `file://${server}`,
+        sha: first
+      })
+    ).resolves.toBe(true)
 
     expect(git(workspace, 'rev-parse', 'HEAD')).toBe(second)
     expect(core.saveState).not.toHaveBeenCalled()
@@ -195,6 +201,24 @@ describe('cleanUpCheckout', () => {
     expect(readdirSync(workspace)).toEqual([])
   })
 
+  posixIt('removes what it can when an entry resists', () => {
+    core.getState.mockReturnValue('true')
+    const locked = join(workspace, 'locked')
+    mkdirSync(locked)
+    writeFileSync(join(locked, 'file'), '')
+    chmodSync(locked, 0o555)
+    try {
+      cleanUpCheckout()
+    } finally {
+      chmodSync(locked, 0o755)
+    }
+
+    expect(readdirSync(workspace)).toEqual(['locked'])
+    expect(core.warning).toHaveBeenCalledWith(
+      expect.stringContaining('Could not clean up the workspace')
+    )
+  })
+
   it("leaves a checkout that isn't its own", () => {
     core.getState.mockReturnValue('')
 
@@ -215,17 +239,17 @@ describe('verifyCheckout', () => {
 
   it('rejects a checkout of another commit', async () => {
     clone()
-    await expect(verifyCheckout(workspace, first, origin())).rejects.toThrow(
-      /check out that commit/
-    )
+    await expect(
+      verifyCheckout(workspace, first, origin(), true)
+    ).rejects.toThrow(/check out that commit/)
   })
 
   it('rejects a shallow checkout', async () => {
     clone('--depth=1')
     const head = git(workspace, 'rev-parse', 'HEAD')
-    await expect(verifyCheckout(workspace, head, origin())).rejects.toThrow(
-      /fetch-depth 0/
-    )
+    await expect(
+      verifyCheckout(workspace, head, origin(), true)
+    ).rejects.toThrow(/fetch-depth 0/)
   })
 
   it('rejects persisted credentials', async () => {
@@ -237,9 +261,9 @@ describe('verifyCheckout', () => {
       'AUTHORIZATION: basic secret'
     )
     const head = git(workspace, 'rev-parse', 'HEAD')
-    await expect(verifyCheckout(workspace, head, origin())).rejects.toThrow(
-      /persist-credentials false/
-    )
+    await expect(
+      verifyCheckout(workspace, head, origin(), true)
+    ).rejects.toThrow(/persist-credentials false/)
   })
 
   it('rejects credentials in an included config file', async () => {
@@ -251,9 +275,9 @@ describe('verifyCheckout', () => {
     )
     git(workspace, 'config', 'include.path', included)
     const head = git(workspace, 'rev-parse', 'HEAD')
-    await expect(verifyCheckout(workspace, head, origin())).rejects.toThrow(
-      /persist-credentials false/
-    )
+    await expect(
+      verifyCheckout(workspace, head, origin(), true)
+    ).rejects.toThrow(/persist-credentials false/)
   })
 
   it('accepts the origin with .git or in another case', async () => {
@@ -267,7 +291,7 @@ describe('verifyCheckout', () => {
     )
     const head = git(workspace, 'rev-parse', 'HEAD')
     await expect(
-      verifyCheckout(workspace, head, origin())
+      verifyCheckout(workspace, head, origin(), true)
     ).resolves.toBeUndefined()
   })
 
@@ -281,9 +305,9 @@ describe('verifyCheckout', () => {
       `file://${join(server, 'forker', 'repo')}`
     )
     const head = git(workspace, 'rev-parse', 'HEAD')
-    await expect(verifyCheckout(workspace, head, origin())).rejects.toThrow(
-      /origin is not/
-    )
+    await expect(
+      verifyCheckout(workspace, head, origin(), true)
+    ).rejects.toThrow(/origin is not/)
   })
 
   it.each([
@@ -316,8 +340,58 @@ describe('verifyCheckout', () => {
     clone()
     change()
     const head = git(workspace, 'rev-parse', 'HEAD')
-    await expect(verifyCheckout(workspace, head, origin())).rejects.toThrow(
-      `such as ${file}`
+    await expect(
+      verifyCheckout(workspace, head, origin(), true)
+    ).rejects.toThrow(`such as ${file}`)
+  })
+
+  it('trusts its own checkout to hold the commit alone', async () => {
+    clone()
+    writeFileSync(join(workspace, 'extra.txt'), '')
+    const head = git(workspace, 'rev-parse', 'HEAD')
+    await expect(
+      verifyCheckout(workspace, head, origin(), false)
+    ).resolves.toBeUndefined()
+  })
+
+  it.each([
+    'https://github.com/owner/repo.git',
+    'git@github.com:owner/repo.git',
+    'ssh://git@github.com/owner/repo',
+    'ssh://git@github.com:22/Owner/Repo.git/'
+  ])('takes %s for the repository', async (url) => {
+    clone()
+    git(workspace, 'remote', 'set-url', 'origin', url)
+    const head = git(workspace, 'rev-parse', 'HEAD')
+    await expect(
+      verifyCheckout(workspace, head, 'https://github.com/owner/repo', true)
+    ).resolves.toBeUndefined()
+  })
+
+  it.each([
+    'git@github.com:forker/repo.git',
+    'https://github.example.com/owner/repo'
+  ])("doesn't take %s for the repository", async (url) => {
+    clone()
+    git(workspace, 'remote', 'set-url', 'origin', url)
+    const head = git(workspace, 'rev-parse', 'HEAD')
+    await expect(
+      verifyCheckout(workspace, head, 'https://github.com/owner/repo', true)
+    ).rejects.toThrow(/origin is not/)
+  })
+
+  it('rejects credentials in the origin URL', async () => {
+    clone()
+    git(
+      workspace,
+      'remote',
+      'set-url',
+      'origin',
+      'https://x-access-token:secret@github.com/owner/repo'
     )
+    const head = git(workspace, 'rev-parse', 'HEAD')
+    await expect(
+      verifyCheckout(workspace, head, 'https://github.com/owner/repo', true)
+    ).rejects.toThrow(/origin holds credentials/)
   })
 })

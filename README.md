@@ -17,7 +17,8 @@ GitHub doesn't give secrets to workflows triggered by a fork, so the usual Sonar
 setup can't analyse their pull requests. This action splits the work in two. The
 build workflow builds the pull request without the Sonar token. A second
 workflow then analyses the result with the token. It never runs any of the pull
-request's code. This is the split
+request's code. Your own pushes and pull requests have the token, so the build
+analyses them directly. This is the split
 [Sonar's documentation describes for forks](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/ci-based-analysis/github-actions-for-sonarcloud#analyzing-fork-pull-requests),
 packaged as one action. It works with Maven, Gradle and any other project
 Sonar's scanner analyses, such as JavaScript, TypeScript or Python. Binaries,
@@ -96,30 +97,6 @@ issues than your own. You can
 [turn a language on](docs/configuration.md#languages-on-pull-requests-from-forks)
 at your own risk. [How it works](docs/how-it-works.md#the-analyzers) explains
 why the others stay off.
-
-## How it works
-
-```mermaid
-flowchart LR
-  fork(["Pull request from a fork"]) --> prepare
-  subgraph build["Build workflow, no secrets"]
-    prepare["prepare mode<br/>builds the pull request<br/>and uploads the output"]
-  end
-  prepare -- "workflow_run" --> analyze
-  subgraph sonar["Sonar workflow, Sonar token"]
-    analyze["analyze mode<br/>checks the artifact and<br/>runs only the scanner"]
-  end
-  own(["Push, or pull request<br/>from your repository"]) --> direct
-  subgraph trusted["Build workflow, Sonar token"]
-    direct["direct mode<br/>builds and analyses"]
-  end
-```
-
-Pushes and pull requests from your own repository have the token, so the build
-analyses them straight away. Dependabot's pull requests get no secrets, like
-forks, so they take the fork path too. You don't have to pick a mode. The `mode`
-input defaults to `auto`, which picks one from the event and whether there's a
-token. See [how it works](docs/how-it-works.md) for the details.
 
 ## Setup
 

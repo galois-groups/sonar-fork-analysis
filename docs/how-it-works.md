@@ -6,6 +6,22 @@ you, see [security](security.md).
 
 ## The two workflows
 
+```mermaid
+flowchart LR
+  fork(["Pull request from a fork"]) --> prepare
+  subgraph build["Build workflow, no secrets"]
+    prepare["prepare mode<br/>builds the pull request<br/>and uploads the output"]
+  end
+  prepare -- "workflow_run" --> analyze
+  subgraph sonar["Sonar workflow, Sonar token"]
+    analyze["analyze mode<br/>checks the artifact and<br/>runs only the scanner"]
+  end
+  own(["Push, or pull request<br/>from your repository"]) --> direct
+  subgraph trusted["Build workflow, Sonar token"]
+    direct["direct mode<br/>builds and analyses"]
+  end
+```
+
 On a pull request from a fork:
 
 1. Your build workflow runs without the Sonar token. For Maven and Gradle, the

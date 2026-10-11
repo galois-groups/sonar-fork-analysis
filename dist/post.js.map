@@ -1,1 +1,1 @@
-{"version":3,"file":"post.js","names":[],"sources":["../src/post.ts"],"sourcesContent":["import { reportInterrupted } from './status.js'\n\n/* v8 ignore next */\nvoid reportInterrupted()\n"],"mappings":";;;AAGK,kBAAkB"}
+{"version":3,"file":"post.js","names":[],"sources":["../src/post.ts"],"sourcesContent":["import { cleanUpCheckout } from './checkout.js'\nimport { reportInterrupted } from './status.js'\n\n/* v8 ignore next */\nvoid reportInterrupted().finally(cleanUpCheckout)\n"],"mappings":";;;AAIK,kBAAkB,CAAC,CAAC,QAAQ,eAAe"}

@@ -77,10 +77,11 @@ about the pull request, not as a review of it.
   contributors run (Settings → Actions → General). It's optional: the action
   keeps the token safe without it.
 
-If you use `checkout: false`, CodeQL may flag your checkout step with
-`actions/untrusted-checkout`. It warns about pull request code checked out in a
-job with secrets. Nothing in that job runs the checked-out code, so you can
-dismiss the alert. Just make sure any step you add doesn't run it either.
+If you check out the code yourself in the Sonar workflow, CodeQL may flag your
+checkout step with `actions/untrusted-checkout`. It warns about pull request
+code checked out in a job with secrets. Nothing in that job runs the checked-out
+code, so you can dismiss the alert. Just make sure any step you add doesn't run
+it either.
 
 ## v1
 

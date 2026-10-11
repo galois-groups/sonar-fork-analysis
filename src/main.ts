@@ -26,7 +26,7 @@ import {
   unpackWorkspace
 } from './analyze.js'
 import { detectBuildTool, type BuildTool } from './build-tool.js'
-import { checkoutCommit, verifyCheckout } from './checkout.js'
+import { prepareCheckout, verifyCheckout } from './checkout.js'
 import {
   buildFailure,
   sonarBuildArguments,
@@ -431,15 +431,18 @@ async function analyzeCommit(
   found: Found
 ): Promise<{ analysed: true } | { gone: number }> {
   const name = artifactName(inputs.projectKey)
-  if (inputs.checkout) {
-    await checkoutCommit(workspace, {
-      serverUrl: process.env.GITHUB_SERVER_URL ?? 'https://github.com',
-      repository: context.repository,
-      sha: origin.headSha,
-      token: inputs.githubToken
-    })
-  }
-  await verifyCheckout(workspace, origin.headSha)
+  const serverUrl = process.env.GITHUB_SERVER_URL ?? 'https://github.com'
+  await prepareCheckout(workspace, {
+    serverUrl,
+    repository: context.repository,
+    sha: origin.headSha,
+    token: inputs.githubToken
+  })
+  await verifyCheckout(
+    workspace,
+    origin.headSha,
+    `${serverUrl}/${context.repository}`
+  )
   const temp = tempDirectory()
   // /proc/self/cwd leads to the working directory of whichever process reads it: the checkout for the
   // action, where the runner starts it, so the sweep would keep a link to it. From here it leads out

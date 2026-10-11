@@ -1,4 +1,4 @@
-import { A as __toESM, C as require_undici, D as __exportAll, E as __esmMin, O as __require, S as HttpCodes, T as __commonJSMin, _ as mkdirP, a as debug, b as BearerCredentialHandler, c as getMultilineInput, d as notice, f as setFailed, g as getExecOutput, h as exec, i as trackedReporter, k as __toCommonJS, l as info, m as warning, o as error, p as setSecret, r as runStatusTarget, s as getInput, t as noReporter, u as isDebug, v as rmRF, w as require_tunnel, x as HttpClient, y as which } from "./shared.js";
+import { A as __commonJSMin, C as rmRF, D as HttpCodes, E as HttpClient, F as __toESM, M as __exportAll, N as __require, O as require_undici, P as __toCommonJS, S as mkdirP, T as BearerCredentialHandler, _ as notice, b as warning, c as jobEnvironment, d as debug, f as error, g as isDebug, h as info, i as trackedReporter, j as __esmMin, k as require_tunnel, l as toolEnvironment, m as getMultilineInput, o as prepareCheckout, p as getInput, r as runStatusTarget, s as verifyCheckout, t as noReporter, u as retry$2, v as setFailed, w as which, x as exec, y as setSecret } from "./shared.js";
 import os, { EOL } from "os";
 import * as crypto from "crypto";
 import * as fs$7 from "fs";
@@ -13,7 +13,7 @@ import Stream, { Readable, Transform } from "node:stream";
 import buffer, { isUtf8 } from "node:buffer";
 import util, { inspect } from "node:util";
 import zlib from "node:zlib";
-import { createHash, createHmac, randomInt, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import os$1, { EOL as EOL$1, homedir, tmpdir } from "node:os";
 import process$1 from "node:process";
 import https from "node:https";
@@ -39750,7 +39750,7 @@ var async_exports = /* @__PURE__ */ __exportAll({
 	reject: () => reject$1,
 	rejectLimit: () => rejectLimit$1,
 	rejectSeries: () => rejectSeries$1,
-	retry: () => retry$2,
+	retry: () => retry$1,
 	retryable: () => retryable,
 	select: () => filter$1,
 	selectLimit: () => filterLimit$1,
@@ -43467,7 +43467,7 @@ function constant(value) {
 		return value;
 	};
 }
-function retry$2(opts, task, callback) {
+function retry$1(opts, task, callback) {
 	var options = {
 		times: DEFAULT_TIMES,
 		intervalFunc: constant(DEFAULT_INTERVAL)
@@ -43545,8 +43545,8 @@ function retryable(opts, task) {
 		function taskFn(cb) {
 			_task(...args, cb);
 		}
-		if (opts) retry$2(opts, taskFn, callback);
-		else retry$2(taskFn, callback);
+		if (opts) retry$1(opts, taskFn, callback);
+		else retry$1(taskFn, callback);
 		return callback[PROMISE_SYMBOL];
 	});
 }
@@ -44871,7 +44871,7 @@ var init_async = __esmMin((() => {
 		reject: reject$1,
 		rejectLimit: rejectLimit$1,
 		rejectSeries: rejectSeries$1,
-		retry: retry$2,
+		retry: retry$1,
 		retryable,
 		seq,
 		series,
@@ -73272,7 +73272,7 @@ async function requestWithGraphqlErrorHandling(state, octokit, request, options)
 	}), options);
 	return response;
 }
-function retry$1(octokit, octokitOptions) {
+function retry(octokit, octokitOptions) {
 	const state = Object.assign({
 		enabled: true,
 		retryAfterBaseValue: 1e3,
@@ -73300,7 +73300,7 @@ function retry$1(octokit, octokitOptions) {
 	}
 	return retryPlugin;
 }
-retry$1.VERSION = VERSION$1;
+retry.VERSION = VERSION$1;
 //#endregion
 //#region node_modules/@actions/artifact/lib/internal/find/get-artifact.js
 var __awaiter$6 = function(thisArg, _arguments, P, generator) {
@@ -73340,7 +73340,7 @@ function getArtifactPublic(artifactName, workflowRunId, repositoryOwner, reposit
 			previews: void 0,
 			retry: retryOpts,
 			request: requestOpts
-		}, retry$1, requestLog).request("GET /repos/{owner}/{repo}/actions/runs/{run_id}/artifacts{?name}", {
+		}, retry, requestLog).request("GET /repos/{owner}/{repo}/actions/runs/{run_id}/artifacts{?name}", {
 			owner: repositoryOwner,
 			repo: repositoryName,
 			run_id: workflowRunId,
@@ -73431,7 +73431,7 @@ function deleteArtifactPublic(artifactName, workflowRunId, repositoryOwner, repo
 			previews: void 0,
 			retry: retryOpts,
 			request: requestOpts
-		}, retry$1, requestLog);
+		}, retry, requestLog);
 		const getArtifactResp = yield getArtifactPublic(artifactName, workflowRunId, repositoryOwner, repositoryName, token);
 		const deleteArtifactResp = yield github.rest.actions.deleteArtifact({
 			owner: repositoryOwner,
@@ -73511,7 +73511,7 @@ function listArtifactsPublic(workflowRunId_1, repositoryOwner_1, repositoryName_
 			previews: void 0,
 			retry: retryOpts,
 			request: requestOpts
-		}, retry$1, requestLog);
+		}, retry, requestLog);
 		let currentPageNumber = 1;
 		const { data: listArtifactResponse } = yield github.request("GET /repos/{owner}/{repo}/actions/runs/{run_id}/artifacts", {
 			owner: repositoryOwner,
@@ -73729,27 +73729,6 @@ If the error persists, please check whether Actions and API requests are operati
 };
 new DefaultArtifactClient();
 //#endregion
-//#region src/retry.ts
-var CHECKOUT_POLICY = {
-	attempts: 3,
-	minSeconds: 10,
-	maxSeconds: 20,
-	sleep: (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1e3))
-};
-async function retry(action, policy = CHECKOUT_POLICY) {
-	for (let attempt = 1; attempt < policy.attempts; attempt++) {
-		try {
-			return await action();
-		} catch (error) {
-			info(error instanceof Error ? error.message : String(error));
-		}
-		const seconds = randomInt(policy.minSeconds, policy.maxSeconds + 1);
-		info(`Waiting ${seconds} seconds before trying again`);
-		await policy.sleep(seconds);
-	}
-	return action();
-}
-//#endregion
 //#region src/languages.ts
 var TESTED_LANGUAGES = [
 	"java",
@@ -73804,7 +73783,7 @@ async function serverLanguages(host, token) {
 	}
 	let response;
 	try {
-		response = await retry(async () => {
+		response = await retry$2(async () => {
 			const answer = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
 			if (answer.status >= 500) throw new Error(`${host} answered ${answer.status}`);
 			return answer;
@@ -74575,101 +74554,6 @@ function detectBuildTool(directory, requested = "auto") {
 	};
 }
 //#endregion
-//#region src/environment.ts
-function jobEnvironment() {
-	return Object.fromEntries(Object.entries(process.env).filter((entry) => entry[1] !== void 0 && !entry[0].startsWith("INPUT_")));
-}
-var RUNNER_FILES = /* @__PURE__ */ new Set([
-	"GITHUB_ENV",
-	"GITHUB_OUTPUT",
-	"GITHUB_PATH",
-	"GITHUB_STATE",
-	"GITHUB_STEP_SUMMARY",
-	"GITHUB_TOKEN"
-]);
-function toolEnvironment() {
-	return Object.fromEntries(Object.entries(jobEnvironment()).filter(([name]) => !name.startsWith("ACTIONS_") && !RUNNER_FILES.has(name)));
-}
-//#endregion
-//#region src/checkout.ts
-var QUIET_GIT = {
-	GIT_TERMINAL_PROMPT: "0",
-	GIT_LFS_SKIP_SMUDGE: "1"
-};
-async function git(workspace, args, env = {}) {
-	return getExecOutput("git", args, {
-		cwd: workspace,
-		env: {
-			...toolEnvironment(),
-			...QUIET_GIT,
-			...env
-		},
-		ignoreReturnCode: true,
-		silent: true
-	});
-}
-async function required(workspace, args, env) {
-	const { exitCode, stdout, stderr } = await git(workspace, args, env);
-	if (exitCode !== 0) throw new Error(`git ${args[0] ?? ""} failed with exit code ${exitCode}: ${stderr.trim()}`);
-	return stdout.trim();
-}
-async function checkoutCommit(workspace, { serverUrl, repository, sha, token }) {
-	if (readdirSync(workspace).length > 0) throw new Error("The workspace is not empty: remove your checkout step, or set checkout to false to keep it");
-	const env = {};
-	if (token) {
-		const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
-		setSecret(basic);
-		Object.assign(env, {
-			GIT_CONFIG_COUNT: "1",
-			GIT_CONFIG_KEY_0: `http.${serverUrl}/.extraheader`,
-			GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${basic}`
-		});
-	}
-	info(`Checking out ${sha}`);
-	await required(workspace, ["init", "--quiet"]);
-	await required(workspace, [
-		"remote",
-		"add",
-		"origin",
-		`${serverUrl}/${repository}`
-	]);
-	const fetch = [
-		"fetch",
-		"--quiet",
-		"--no-tags",
-		"--no-recurse-submodules"
-	];
-	await retry(() => required(workspace, [
-		...fetch,
-		"origin",
-		"+refs/heads/*:refs/remotes/origin/*"
-	], env));
-	await retry(() => required(workspace, [
-		...fetch,
-		"origin",
-		sha
-	], env));
-	await required(workspace, [
-		"checkout",
-		"--quiet",
-		"--detach",
-		sha
-	]);
-}
-async function verifyCheckout(workspace, sha) {
-	const head = await required(workspace, ["rev-parse", "HEAD"]);
-	if (head !== sha) throw new Error(`The checkout is at ${head} but the analysis is for ${sha}: check out that commit`);
-	if (await required(workspace, ["rev-parse", "--is-shallow-repository"]) === "true") throw new Error("The checkout is shallow, so Sonar would get no history: fetch it with fetch-depth 0");
-	const { stdout } = await git(workspace, [
-		"config",
-		"--local",
-		"--includes",
-		"--get-regexp",
-		String.raw`^http\..*\.extraheader$`
-	]);
-	if (stdout.trim() !== "") throw new Error("The checkout stored credentials in .git/config: check out with persist-credentials false");
-}
-//#endregion
 //#region src/direct.ts
 var DEFAULT_GOALS = {
 	maven: ["verify"],
@@ -74726,16 +74610,10 @@ function missingAnalysis(tool) {
 var DEFAULTS = {
 	mode: "auto",
 	"working-directory": ".",
-	"build-tool": "auto",
-	checkout: "true"
+	"build-tool": "auto"
 };
 function input(name) {
 	return getInput(name) || DEFAULTS[name] || "";
-}
-function flag(name) {
-	const value = input(name).toLowerCase();
-	if (value !== "true" && value !== "false") throw new Error(`Input ${name} must be true or false, not '${value}'`);
-	return value === "true";
 }
 function lines(name) {
 	return getMultilineInput(name).filter((line) => line.length > 0);
@@ -74751,8 +74629,7 @@ function readInputs() {
 		organization: input("sonar-organization"),
 		hostUrl: input("sonar-host-url"),
 		token: input("sonar-token"),
-		githubToken: input("github-token"),
-		checkout: flag("checkout")
+		githubToken: input("github-token")
 	};
 }
 //#endregion
@@ -76760,7 +76637,7 @@ async function prepare(inputs) {
 		workspace,
 		home: homedir()
 	}, staging, tool.name, pullRequestNumber(), types.files, types.links);
-	for (const warning$1 of staged.warnings) warning(warning$1);
+	for (const warning$2 of staged.warnings) warning(warning$2);
 	if (!process.env.ACTIONS_RUNTIME_TOKEN) {
 		warning(`Not running in GitHub Actions, so ${name} was not uploaded: ${staging}`);
 		return;
@@ -76868,13 +76745,14 @@ async function analyzeRun(inputs, context, workspace, report) {
 }
 async function analyzeCommit(inputs, context, origin, workspace, found) {
 	const name = artifactName(inputs.projectKey);
-	if (inputs.checkout) await checkoutCommit(workspace, {
-		serverUrl: process.env.GITHUB_SERVER_URL ?? "https://github.com",
+	const serverUrl = process.env.GITHUB_SERVER_URL ?? "https://github.com";
+	await prepareCheckout(workspace, {
+		serverUrl,
 		repository: context.repository,
 		sha: origin.headSha,
 		token: inputs.githubToken
 	});
-	await verifyCheckout(workspace, origin.headSha);
+	await verifyCheckout(workspace, origin.headSha, `${serverUrl}/${context.repository}`);
 	const temp = tempDirectory();
 	process.chdir(temp);
 	const removedLinks = removeOutwardLinks(workspace);
@@ -76907,7 +76785,7 @@ async function analyzeCommit(inputs, context, origin, workspace, found) {
 	];
 	if (existsSync$1(join(artifact, "home"))) cpSync(join(artifact, "home"), home, { recursive: true });
 	if (choiceWarning) warnings.push(choiceWarning);
-	for (const warning$2 of warnings) warning(warning$2);
+	for (const warning$1 of warnings) warning(warning$1);
 	const properties = resolved.properties;
 	if (!properties.has("sonar.projectBaseDir")) properties.set("sonar.projectBaseDir", workspace);
 	const languages = await serverLanguages(languagesHost(inputs.hostUrl, inputs.buildArguments), inputs.token);

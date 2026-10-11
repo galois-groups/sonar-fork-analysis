@@ -1,7 +1,7 @@
-import { n as reportInterrupted } from "./shared.js";
+import { a as cleanUpCheckout, n as reportInterrupted } from "./shared.js";
 //#region src/post.ts
 /* v8 ignore next */
-reportInterrupted();
+reportInterrupted().finally(cleanUpCheckout);
 //#endregion
 export {};
 

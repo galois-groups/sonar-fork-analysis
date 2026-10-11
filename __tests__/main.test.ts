@@ -203,6 +203,7 @@ describe('run', () => {
   it('analyses a Node project with the scanner it pins', async () => {
     rmSync(join(project, 'pom.xml'))
     writeFileSync(join(project, 'package.json'), '{}')
+    writeFileSync(join(project, 'sonar-project.properties'), 'sonar.sources=.')
     exec.mockImplementation(async (_tool, _args, options) => {
       const work = join(options!.cwd!, '.scannerwork')
       mkdirSync(work, { recursive: true })
@@ -499,6 +500,7 @@ describe('run in prepare mode', () => {
   })
 
   it('reads a Node project with the scanner it pins, and ships its type declarations', async () => {
+    inputs['build-tool'] = 'scanner'
     rmSync(join(project, 'pom.xml'))
     writeFileSync(join(project, 'package.json'), '{}')
     mkdirSync(join(project, 'src'))

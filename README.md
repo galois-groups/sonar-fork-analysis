@@ -153,8 +153,8 @@ either up to date.
 This covers JavaScript, TypeScript, Python, Go, PHP and other languages. Add the
 action after your own build and test steps. It runs Sonar's scanner, as Sonar's
 own scan action does. The scanner reads its settings from your
-`sonar-project.properties`. The action recognises these projects by that file or
-by a `package.json`. For a Node project:
+`sonar-project.properties`. The action recognises these projects by that file.
+For a Node project:
 
 ```yaml
 steps:

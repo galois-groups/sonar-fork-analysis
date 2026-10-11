@@ -52,15 +52,11 @@ export function detectBuildTool(
   } else if (maven || gradle) {
     // A Java project's frontend is analysed with build-tool: scanner, under its own project key.
     name = maven ? 'maven' : 'gradle'
-  } else if (
-    existsSync(join(directory, 'sonar-project.properties')) ||
-    // A Node project without its settings yet, which the action then warns about.
-    existsSync(join(directory, 'package.json'))
-  ) {
+  } else if (existsSync(join(directory, 'sonar-project.properties'))) {
     name = 'scanner'
   } else {
     throw new Error(
-      `No Maven or Gradle build, sonar-project.properties or package.json found in '${directory}', set the working-directory input`
+      `No Maven or Gradle build or sonar-project.properties found in '${directory}', set the working-directory input`
     )
   }
 

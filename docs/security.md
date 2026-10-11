@@ -7,9 +7,14 @@ prepare when you pass it the token. The Sonar workflow has the token but never
 runs anything from the pull request.
 
 Everything the Sonar workflow gets from the pull request could be hostile: the
-files in the checkout and the artifact the pull request's build left behind.
-This page explains how the action handles them and what's left for you to
-decide.
+files in the checkout and the artifact the pull request's build left behind. So
+the Sonar workflow checks all of it before the scanner runs. It removes links
+that lead out of the checkout. It only keeps the build's settings that are on an
+allowlist. It turns off the analyzers of the languages this action isn't tested
+with. [How it works](how-it-works.md#what-the-sonar-workflow-does) has the
+details, and how this project tests them against Sonar's real scanner.
+
+This page covers what's left for you to decide.
 
 ## What stays off on the fork path
 

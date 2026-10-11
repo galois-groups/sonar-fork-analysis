@@ -29,32 +29,30 @@ If you don't need coverage on fork pull requests, SonarQube Cloud's
 handles forks with no setup. It also doesn't support monorepos and analyses some
 languages in less depth.
 
-## Contents
+Coming from v1? It no longer gets fixes, not even security fixes. See
+[migrating from v1](docs/migrating-from-v1.md).
 
-- [Supported projects](#supported-projects-and-runners)
-- [How it works](#how-it-works)
-- [Setup](#setup)
-- [Real-world examples](#real-world-examples)
-- [Configuration](docs/configuration.md): inputs, required checks and recipes.
-- [Security](docs/security.md): what the analysis trusts and how to harden your
-  setup.
-- [How it works in detail](docs/how-it-works.md)
+## Documentation
+
+- [Configuration](docs/configuration.md): inputs, required checks, recipes and
+  limitations.
+- [Security](docs/security.md): what stays off, what a fork can still influence
+  and how to harden your setup.
+- [How it works](docs/how-it-works.md): what the Sonar workflow does with the
+  pull request, and how this project tests it.
 - [Troubleshooting](docs/troubleshooting.md): what each message means.
-- [Migrating from v1](docs/migrating-from-v1.md)
 - [Contributing](CONTRIBUTING.md)
-- [Reporting vulnerabilities](#reporting-vulnerabilities)
-- [License](#license)
 
-## Supported projects and runners
+## Supported projects
 
-| Project                                                      | Supported | Tested |
-| ------------------------------------------------------------ | --------- | ------ |
-| Maven, Gradle                                                | Yes       | Yes    |
-| npm, pnpm                                                    | Yes       | Yes    |
-| Yarn with `nodeLinker: node-modules`, Bun                    | Yes       | No     |
-| Yarn Plug'n'Play                                             | Yes¹      | No     |
-| Python, Go, PHP and others with a `sonar-project.properties` | Yes²      | No     |
-| .NET, C, C++ and Objective-C                                 | No³       | No     |
+| Project                                                      | What the action does             | Tested |
+| ------------------------------------------------------------ | -------------------------------- | ------ |
+| Maven, Gradle                                                | Runs the build                   | Yes    |
+| npm, pnpm                                                    | Runs after your build and tests  | Yes    |
+| Yarn with `nodeLinker: node-modules`, Bun                    | Runs after your build and tests  | No     |
+| Yarn Plug'n'Play                                             | Runs after your build and tests¹ | No     |
+| Python, Go, PHP and others with a `sonar-project.properties` | Runs after your build and tests² | No     |
+| .NET, C, C++ and Objective-C                                 | Nothing: not supported³          |        |
 
 ¹ Rules that need types find less: there's no `node_modules` to take them from.
 `nodeLinker: node-modules` avoids it.
@@ -64,6 +62,20 @@ on. See
 [languages on pull requests from forks](#languages-on-pull-requests-from-forks).
 
 ³ They need Sonar's scanner for .NET or Sonar's build wrapper.
+
+<!-- prettier-ignore -->
+> [!NOTE]
+> Tested means this repository's workflows test it on every change. Each sample
+> project in `fixtures/` is analysed twice: directly and through the fork path.
+> Both analyses must find the same issues, coverage and tests. The sample
+> projects hold every language the fork path analyses.
+>
+> Untested means we don't guarantee that the token stays safe on pull requests
+> from forks. Use it at your own risk. That includes languages you turn on yourself.
+
+The action is tested on GitHub's Linux runners. Its build part is also tested on
+Windows and macOS. See
+[supported runners](docs/configuration.md#supported-runners).
 
 ### Languages on pull requests from forks
 
@@ -77,12 +89,12 @@ languages the sample projects test:
   manifests, Helm charts and more;
 - Dockerfiles and Containerfiles.
 
-Sonar only loads a language's analyzer when it finds a file of that language.
-The action asks Sonar which languages it knows. It then tells Sonar that no file
-belongs to any of the others. Their files are still indexed, but with no
-language. So their analyzer never runs. A pull request from a fork may then show
-fewer issues than one of yours. It shows none for Python files in a Maven
-project.
+Files of other languages get no issues on pull requests from forks, such as
+Python files in a Maven project. So those pull requests may show fewer issues
+than yours. You can
+[turn a language on](docs/configuration.md#languages-on-pull-requests-from-forks)
+at your own risk. [How it works](docs/how-it-works.md#the-analyzers) explains
+why the others stay off.
 
 ## How it works
 
@@ -101,6 +113,12 @@ flowchart LR
     direct["direct mode<br/>builds and analyses"]
   end
 ```
+
+Pushes and pull requests from your own repository have the token, so the build
+analyses them straight away. Dependabot's pull requests get no secrets, like
+forks, so they take the fork path too. You don't have to pick a mode: the `mode`
+input defaults to `auto`, which picks the right part. See
+[how it works](docs/how-it-works.md) for the details.
 
 ## Setup
 
@@ -177,12 +195,13 @@ flowchart LR
    ```
 
    Use the same `project-key` in both workflows, because it also names the
-   artifact. `statuses: write` is optional, see
-   [commit statuses](docs/configuration.md#commit-statuses-and-required-checks).
+   artifact. `statuses: write` is optional.
 
-If you pin your other actions to commit SHAs, pin this one too. The
-[security page](docs/security.md#hardening-your-setup) has more hardening
-advice.
+5. To block merging until the analysis passes, require Sonar's own check. See
+   [required checks](docs/configuration.md#commit-statuses-and-required-checks).
+
+Then read [security](docs/security.md). It lists what a fork can still influence
+and how to harden your setup.
 
 ### Other projects
 
@@ -244,8 +263,7 @@ See its [build workflow](.github/workflows/ci.yml) and
 
 ## Reporting vulnerabilities
 
-Report vulnerabilities as described in [SECURITY.md](SECURITY.md). How the
-action protects your token is explained in [security](docs/security.md).
+Report vulnerabilities as described in [SECURITY.md](SECURITY.md).
 
 ## License
 

@@ -1,5 +1,9 @@
 # How it works
 
+This page explains how the action analyses pull requests from forks without
+exposing the Sonar token, and how this project tests that. For what's left to
+you, see [security](security.md).
+
 ## The two workflows
 
 On a pull request from a fork:
@@ -31,13 +35,12 @@ chooses the right part from where the action runs and whether it has a token.
 
 ## Settings from the build
 
-- On the fork path, the build collects its settings with simulation mode
-  (`sonar.scanner.internal.dumpToFile`), a feature of the Sonar plugins for
-  Maven and Gradle and of the pinned scanner. Sonar uses it in its own tests but
-  doesn't document it, so a release could change it. If it stops working, the
-  build fails with a message that no analysis settings were written. This
-  project's tests keep up with the latest plugins, so such a change should show
-  up here first.
+On the fork path, the build collects its settings with simulation mode
+(`sonar.scanner.internal.dumpToFile`), a feature of the Sonar plugins for Maven
+and Gradle and of the pinned scanner. Sonar uses it in its own tests but doesn't
+document it, so a release could change it. If it stops working, the build fails
+with a message that no analysis settings were written. This project's tests keep
+up with the latest plugins, so such a change should show up here first.
 
 ## What the Sonar workflow does
 
@@ -45,12 +48,14 @@ It never runs Maven, Gradle, npm or a wrapper script. It checks out the pull
 request, unpacks the artifact and runs the Sonar scanner, which reads the pull
 request's files but never runs them.
 
-**The checkout.** The action checks out the pull request itself, without ever
-writing the GitHub token to disk. `origin` points at your repository, because
-that's where Sonar looks for the base branch. The pull request's commit comes
-from your repository too. GitHub keeps a copy of every pull request's head
-there. The action never contacts the fork. Then it removes two kinds of files
-the scanner would otherwise trust:
+### The checkout
+
+The action checks out the pull request itself, without ever writing the GitHub
+token to disk. `origin` points at your repository, because that's where Sonar
+looks for the base branch. The pull request's commit comes from your repository
+too. GitHub keeps a copy of every pull request's head there. The action never
+contacts the fork. Then it removes two kinds of files the scanner would
+otherwise trust:
 
 - Links that lead outside the checkout. The scanner follows them, so a link to
   `/proc/self` would get the scanner's own environment, token included, indexed
@@ -59,21 +64,24 @@ the scanner would otherwise trust:
 - `sonar-project.properties` files, which the scanner would read as
   configuration.
 
-**The artifact.** The action refuses an artifact with links, special files or
-file names that aren't valid UTF-8 in it. It unpacks the build output next to
-the sources, never over an existing file or through a link. Into the source
-directories it only adds report files that the settings name and type
-information in `node_modules` (declaration, `package.json` and `tsconfig`
-files). Through a link or a report setting, a fork can still add files that
-Sonar analyses as part of its code. That only changes its own pull request's
-results, as committing those files would. The analyzers read the type
-information to learn the types the code uses and by default never report on it
-as part of the project. The action also recreates the links a Node project had
-in `node_modules`. It only recreates links that sit in a `node_modules`
-directory and lead to a directory in the checkout, never into `.git`. A fork
-could commit links like these itself.
+### The artifact
 
-**The settings.** The build's settings go through the same
+The action refuses an artifact with links, special files or file names that
+aren't valid UTF-8 in it. It unpacks the build output next to the sources, never
+over an existing file or through a link. Into the source directories it only
+adds report files that the settings name and type information in `node_modules`
+(declaration, `package.json` and `tsconfig` files). Through a link or a report
+setting, a fork can still add files that Sonar analyses as part of its code.
+That only changes its own pull request's results, as committing those files
+would. The analyzers read the type information to learn the types the code uses
+and by default never report on it as part of the project. The action also
+recreates the links a Node project had in `node_modules`. It only recreates
+links that sit in a `node_modules` directory and lead to a directory in the
+checkout, never into `.git`. A fork could commit links like these itself.
+
+### The settings
+
+The build's settings go through the same
 [allowlist](#what-the-fork-path-carries) again, and every path in them must lead
 inside the checkout or the action's private home. That's where the action puts
 libraries from the build's home, such as Maven's `~/.m2`. The action also drops
@@ -89,7 +97,9 @@ artifact says: the project key, the analysed commit, the working directory, the
 languages it analyses and the
 [features that stay off](security.md#what-stays-off-on-the-fork-path).
 
-**The analyzers.** On the fork path, only the analyzers of the
+### The analyzers
+
+On the fork path, only the analyzers of the
 [languages the sample projects test](../README.md#languages-on-pull-requests-from-forks)
 run. Sonar's engine only runs a language's analyzer on files of that language.
 It loads most analyzers only once it finds such a file. So the action asks the
@@ -111,17 +121,17 @@ TypeScript. It ran none of the project's configuration files (ESLint, Babel,
 TypeScript and others) and loaded no code from its `node_modules`. It only read
 `tsconfig` files and type declarations as data. Two Node test fixtures, one
 installed with npm and one with pnpm, keep checking this against SonarQube
-Cloud's analyzer, see
-[keeping up with the scanner](#keeping-up-with-the-scanner). Analyzers for other
+Cloud's analyzer, see [how it's tested](#how-its-tested). Analyzers for other
 languages haven't been checked. Some might start other programs. If you turn
 their language on with `build-arguments`, the action guarantees nothing for
 them.
 
-**The scanner.** It runs in an empty directory of its own. Its environment holds
-the Sonar token, but not the action's inputs, the runner's own tokens or
-variables like `GITHUB_ENV`. That limits what a mistake can reach, but it isn't
-a security boundary: a program running there could still read the action's own
-environment.
+### The scanner
+
+It runs in an empty directory of its own. Its environment holds the Sonar token,
+but not the action's inputs, the runner's own tokens or variables like
+`GITHUB_ENV`. That limits what a mistake can reach, but it isn't a security
+boundary: a program running there could still read the action's own environment.
 
 ## What the fork path carries
 
@@ -150,7 +160,7 @@ The filtering can produce two warnings:
   artifact holds a setting no build would produce. Either someone tampered with
   the artifact, or the two workflows run different versions of the action.
 
-## Keeping up with the scanner
+## How it's tested
 
 Sonar updates its scanner on its own schedule, and some updates matter here.
 Dependency analysis, build-system autoconfiguration and the engine's habit of

@@ -1,5 +1,8 @@
 # Configuration
 
+Everything beyond the [setup](../README.md#setup): the inputs, required checks,
+recipes for common setups, supported runners and limitations.
+
 ## Inputs
 
 | Input                | Required              | Default            | Description                                                                                                                                                                                             |
@@ -47,6 +50,8 @@ repository normally don't get it. Requiring it would block them.
 
 ## Languages on pull requests from forks
 
+Pull requests from forks only get the
+[tested languages](../README.md#languages-on-pull-requests-from-forks) analysed.
 To turn a language on, set its file patterns in `build-arguments` in the Sonar
 workflow. The action logs the Sonar names of the languages it turns off. For
 Python:
@@ -257,23 +262,16 @@ steps.
 | Runner      | Build workflow | Sonar workflow |
 | ----------- | -------------- | -------------- |
 | Linux x64   | Tested         | Tested         |
-| Windows x64 | Tested⁴        | Untested       |
-| macOS ARM64 | Tested⁴        | Untested       |
+| Windows x64 | Tested¹        | Untested       |
+| macOS ARM64 | Tested¹        | Untested       |
 | Linux ARM64 | Untested       | Untested       |
 | macOS Intel | Untested       | Untested       |
 
-⁴ Only the build's preparation runs there: Maven, Gradle and npm on Windows, npm
+¹ Only the build's preparation runs there: Maven, Gradle and npm on Windows, npm
 on macOS. Nothing analyses those artifacts.
 
-<!-- prettier-ignore -->
-> [!NOTE]
-> Tested means this repository's workflows test it on every change. Each sample
-> project in `fixtures/` is analysed twice: directly and through the fork path.
-> Both analyses must find the same issues, coverage and tests. The sample
-> projects hold every language the fork path analyses.
->
-> Untested means we don't guarantee that the token stays safe on pull requests
-> from forks. Use it at your own risk. That includes languages you turn on yourself.
+Tested and untested mean the same as for
+[projects](../README.md#supported-projects).
 
 ## Limitations
 
@@ -281,7 +279,6 @@ on macOS. Nothing analyses those artifacts.
   `sonar-project.properties` and `build-arguments`. Unlike Sonar's npm scanner,
   it doesn't guess any from `package.json`, so set your coverage report path
   yourself.
-
 - On fork pull requests, only the analyzers of tested languages run. See
   [languages on pull requests from forks](#languages-on-pull-requests-from-forks).
 - Dependency analysis (SCA) and the engine's build-system autoconfiguration are

@@ -23,15 +23,16 @@ an engine that starts processes in new places, they fail until someone reviews
 `__tests__/java/engine-processes-*.txt`.
 
 The action pins the scanner CLI by hash. When the weekly run of Scanner and
-engines reports a newer one, run `npm run scanner:update`, which pins it with
-the digests Sonar publishes, then `npm run bundle`, and open a pull request.
+engines reports a newer one, run `npm run scanner:update`. It pins the new
+scanner with the digests Sonar publishes. Then run `npm run bundle` and open a
+pull request.
 
 To run the action locally, copy `.env.example` to `.env`, edit it and run
 `npm run local`.
 
 Dependabot pull requests that update runtime dependencies fail CI until `dist/`
-is rebuilt. Run `npm ci && npm run bundle` on the branch, or commit the `dist`
-artifact the failed run uploads.
+is rebuilt. To rebuild it, run `npm ci && npm run bundle` on the branch. You can
+also commit the `dist` artifact that the failed run uploads.
 
 Third-party actions added to a workflow must also be added to the repository's
 allowed actions.

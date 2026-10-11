@@ -1,177 +1,286 @@
 # How it works
 
+This page explains how the action analyses pull requests from forks without
+exposing the Sonar token. It also explains how this project tests that. The
+[security](security.md) page covers what a fork can still influence and how to
+harden your setup.
+
 ## The two workflows
 
-On a pull request from a fork:
+GitHub starts the Sonar workflow each time the build workflow completes. What
+the two do depends on where the change comes from.
 
-1. Your build workflow runs without the Sonar token. The action builds the
-   project with Maven or Gradle and has Sonar's build plugin work out the
-   analysis settings without running the analysis. For other projects, the
-   action doesn't build anything: it runs after your own build and test steps
-   and reads your `sonar-project.properties`. It uploads what the analysis needs
-   as an artifact, together with those settings: compiled classes, libraries,
-   coverage and test reports. For a Node project, that includes the type
-   declarations from `node_modules`.
-2. When the build finishes, GitHub starts your Sonar workflow through
-   `workflow_run`. It runs in your repository, so it has the Sonar token.
-3. The action checks out the pull request, checks the artifact's settings
-   against an allowlist and runs the Sonar scanner on the sources and the build
-   output. It never runs the build or anything else from the pull request. Sonar
-   shows the results on the pull request as usual.
+### Pull requests from forks
 
-On pushes and pull requests from your own repository, the build has the token,
-so the action analyses straight away, as Sonar's own plugins and scanner would.
-The Sonar workflow still starts after the build but has nothing to do.
+```mermaid
+flowchart LR
+  pr(["Pull request<br/>from a fork"])
+  subgraph build["Build workflow, no secrets"]
+    prepare["prepare mode<br/>builds the pull request"]
+  end
+  artifact[("Artifact<br/>build output<br/>and settings")]
+  subgraph sonar["Sonar workflow, Sonar token"]
+    analyze["analyze mode<br/>checks the artifact<br/>and runs the scanner"]
+  end
+  server[("SonarQube Cloud<br/>or Server")]
+  pr -- "1" --> prepare
+  prepare -- "2" --> artifact
+  prepare -. "3. workflow_run" .-> analyze
+  artifact -- "4" --> analyze
+  analyze -. "5. status" .-> pr
+  analyze -- "6" --> server
+  server -- "7. check" --> pr
+```
+
+1. The pull request starts your build workflow. It runs without the Sonar token.
+   For Maven and Gradle, the action runs the build. Sonar's build plugin then
+   works out the analysis settings without running the analysis. For other
+   projects, the action runs after your own build and tests and reads your
+   `sonar-project.properties`.
+2. The action uploads the settings and what the analysis needs as an artifact.
+   An artifact is a set of files GitHub keeps with the run. This one holds
+   compiled classes, libraries, coverage and test reports. For a Node project,
+   it also holds the type declarations from `node_modules`.
+3. When the build finishes, GitHub starts your Sonar workflow through
+   `workflow_run`. It runs in your repository and has the Sonar token.
+4. The action downloads the artifact and checks out the pull request. It checks
+   the artifact's settings against an allowlist.
+5. If the job has `statuses: write`, the action posts a pending status on the
+   pull request. It turns to success or failure when the analysis ends.
+6. The action runs Sonar's scanner on the sources and the build output. The
+   scanner sends the analysis to the server. Nothing from the pull request runs.
+7. Sonar posts its check on the pull request as usual.
+
+### Your own pushes and pull requests
+
+```mermaid
+flowchart LR
+  own(["Push or pull request<br/>from your repository"])
+  subgraph trusted["Build workflow, Sonar token"]
+    direct["direct mode<br/>builds and analyses"]
+  end
+  server[("SonarQube Cloud<br/>or Server")]
+  marker[("Marker<br/>analysed directly")]
+  subgraph sonar["Sonar workflow, Sonar token"]
+    analyze["analyze mode<br/>finds the marker<br/>and stops"]
+  end
+  own -- "1" --> direct
+  direct -- "2" --> server
+  server -- "3. check" --> own
+  direct -- "4" --> marker
+  direct -. "5. workflow_run" .-> analyze
+  marker -- "6" --> analyze
+```
+
+1. The push or pull request starts your build workflow. It has the Sonar token.
+2. The action builds and analyses straight away. It works like Sonar's own
+   plugins and scanner.
+3. On a pull request, Sonar posts its check as usual.
+4. The action uploads a small artifact as a marker of the direct analysis.
+5. When the build finishes, GitHub starts your Sonar workflow anyway.
+6. The action finds the marker and stops. It posts no status.
 
 Dependabot's pull requests run without your Actions secrets, like forks, so they
 take the fork path too.
 
 You don't have to pick any of this. The `mode` input defaults to `auto`, which
-chooses the right part from where the action runs and whether it has a token.
+picks the mode from the event and whether there's a token.
 
 ## Settings from the build
 
-- On the fork path, the build collects its settings with simulation mode
-  (`sonar.scanner.internal.dumpToFile`), a feature of the Sonar plugins for
-  Maven and Gradle and of the pinned scanner. Sonar uses it in its own tests but
-  doesn't document it, so a release could change it. If it stops working, the
-  build fails with a message that no analysis settings were written. This
-  project's tests keep up with the latest plugins, so such a change should show
-  up here first.
+On the fork path, the build collects its settings without running the analysis.
+It uses simulation mode (`sonar.scanner.internal.dumpToFile`), a feature of
+Sonar's plugins for Maven and Gradle and of the scanner the action pins. Sonar
+uses it in its own tests but doesn't document it. So a release could change it.
+If it stops working, the build fails with a message that no analysis settings
+were written. This project's tests keep up with the latest plugins, so such a
+change should show up here first.
 
 ## What the Sonar workflow does
 
 It never runs Maven, Gradle, npm or a wrapper script. It checks out the pull
-request, unpacks the artifact and runs the Sonar scanner, which reads the pull
-request's files but never runs them.
+request, unpacks the artifact and runs Sonar's scanner. The scanner reads the
+pull request's files but never runs them. Most of its work happens in Sonar's
+engine, which the scanner downloads from the server. The engine runs one
+analyzer per language.
 
-**The checkout.** The action checks out the pull request itself, without ever
-writing the GitHub token to disk. `origin` points at your repository, because
-that's where Sonar looks for the base branch. The pull request's commit comes
-from your repository too. GitHub keeps a copy of every pull request's head
-there. The action never contacts the fork. Then it removes two kinds of files
-the scanner would otherwise trust:
+### The checkout
 
-- Links that lead outside the checkout. The scanner follows them, so a link to
-  `/proc/self` would get the scanner's own environment, token included, indexed
-  and sent to Sonar. A link could hide behind a file name that isn't valid
-  UTF-8, so the action refuses such names.
-- `sonar-project.properties` files, which the scanner would read as
+The action checks out the pull request itself, without ever writing the GitHub
+token to disk. `origin` points at your repository, because that's where Sonar
+looks for the base branch. The pull request's commit comes from your repository
+too. GitHub keeps a copy of every pull request's head there. The action never
+contacts the fork. Then it removes two kinds of files the scanner would
+otherwise trust:
+
+- Links that lead outside the checkout, because the scanner follows them. A link
+  to `/proc/self` would get the scanner's own environment indexed and sent to
+  Sonar. That environment holds the token. A link could hide behind a file name
+  that isn't valid UTF-8, so the action refuses such names.
+- `sonar-project.properties` files, because the scanner would read them as
   configuration.
 
-**The artifact.** The action refuses an artifact with links, special files or
-file names that aren't valid UTF-8 in it. It unpacks the build output next to
-the sources, never over an existing file or through a link. Into the source
-directories it only adds report files that the settings name and type
-information in `node_modules` (declaration, `package.json` and `tsconfig`
-files). Through a link or a report setting, a fork can still add files that
-Sonar analyses as part of its code. That only changes its own pull request's
-results, as committing those files would. The analyzers read the type
-information to learn the types the code uses and by default never report on it
-as part of the project. The action also recreates the links a Node project had
-in `node_modules`. It only recreates links that sit in a `node_modules`
-directory and lead to a directory in the checkout, never into `.git`. A fork
-could commit links like these itself.
+### The artifact
 
-**The settings.** The build's settings go through the same
-[allowlist](#what-the-fork-path-carries) again, and every path in them must lead
-inside the checkout or the action's private home. That's where the action puts
-libraries from the build's home, such as Maven's `~/.m2`. The action also drops
-any value the scanner might read differently from how it was checked. The main
-example is a `${…}` placeholder: the scanner expands those, so
+The action refuses an artifact that holds links, special files or file names
+that aren't valid UTF-8. It unpacks the build output next to the sources. It
+never writes over an existing file or through a link. It adds only two kinds of
+files to the source directories:
+
+- the report files that the analysis settings point to;
+- type information in `node_modules`: declarations, `package.json` and
+  `tsconfig` files.
+
+The analyzers read the type information only to learn the types the code uses.
+By default, Sonar's JavaScript analyzer reports no issues in it: it skips
+`node_modules` and `.d.ts` files.
+
+Through a link or a report setting, a fork can still add files that Sonar
+analyses as part of its code. That only changes its own pull request's results,
+as committing those files would.
+
+The action also recreates the links a Node project had in `node_modules`. It
+only recreates links that sit in a `node_modules` directory and lead to a
+directory in the checkout, never into `.git`. A fork could commit links like
+these itself.
+
+### The settings
+
+The build's settings go through the same
+[allowlist](#what-the-fork-path-carries) again. Every path in them must lead
+inside the checkout or into the action's private home. That's where the action
+puts libraries from the build's home directory, such as Maven's `~/.m2`. The
+action also drops any value the scanner might read differently from how it was
+checked. The main example is a `${…}` placeholder: the scanner expands those, so
 `${env.SONAR_TOKEN}` would turn into the token. Quotes, control characters, path
-patterns and stray spaces are dropped for the same reason. Modules are worked
-out the same way the scanner's engine does it, and each one needs its own base
+patterns and stray spaces are dropped for the same reason. The action works out
+the modules the same way the engine does. Each module needs its own base
 directory inside the checkout.
 
-Then the action sets the settings that matter for safety itself, whatever the
-artifact says: the project key, the analysed commit, the working directory, the
-languages it analyses and the
-[features that stay off](security.md#what-stays-off-on-the-fork-path).
+Some settings matter for safety. The action always sets those itself. The
+artifact can't change them:
 
-**The analyzers.** On the fork path, only the analyzers of the
-[languages the sample projects test](../README.md#languages-on-pull-requests-from-forks)
-run. Sonar's engine only runs a language's analyzer on files of that language.
-It loads most analyzers only once it finds such a file. So the action asks the
-server which languages it knows. For each of the others, it sets
+- the project key;
+- the analysed commit;
+- the working directory;
+- which languages are analysed;
+- the [features that stay off](security.md#what-stays-off-on-the-fork-path).
+
+### The analyzers
+
+On the fork path, only the analyzers of the
+[tested languages](../README.md#languages-on-pull-requests-from-forks) run. The
+engine loads most analyzers only once it finds a file of their language. It runs
+each analyzer only on those files. So the action asks the server which languages
+it knows. For each language that isn't tested, it sets
 `sonar.lang.patterns.<language>` to a pattern no file can match. Files of those
-languages are still indexed, but with no language. Their analyzers never run in
-the job that has the token. If the server doesn't list its languages, the
-analysis stops. The tests check the engine habits this relies on. They run
-against SonarQube Cloud's engine and SonarQube's.
+languages are still indexed, but without a language. Their analyzers never load
+in the job that has the token.
 
-The always-loaded `iac` plugin also sorts YAML and JSON files by their content.
-For example, it finds CloudFormation and Ansible files that way. Turning
-languages off doesn't stop that. Those sensors only read files.
+Without the server's list, the action can't know which languages to turn off. So
+if it can't get the list, it stops without analysing. All this relies on how the
+engine behaves. A new engine could change that. This project's tests check it
+against the engines of SonarQube Cloud and SonarQube. See
+[how it's tested](#how-its-tested).
 
-The analyzers of the tested languages only read files. For JavaScript and
-TypeScript, this was tested against Sonar's real analyzer with a project that
-tried every way to get its own code run. The analyzer used its own Node.js and
-TypeScript. It ran none of the project's configuration files (ESLint, Babel,
-TypeScript and others) and loaded no code from its `node_modules`. It only read
-`tsconfig` files and type declarations as data. Two Node test fixtures, one
-installed with npm and one with pnpm, keep checking this against SonarQube
-Cloud's analyzer, see
-[keeping up with the scanner](#keeping-up-with-the-scanner). Analyzers for other
-languages haven't been checked. Some might start other programs. If you turn
-their language on with `build-arguments`, the action guarantees nothing for
-them.
+Sonar's plugin for infrastructure as code (`iac`) always loads. It recognises
+some YAML and JSON files by their content, such as CloudFormation and Ansible
+files. Turning languages off doesn't stop that. That plugin only reads files.
 
-**The scanner.** It runs in an empty directory of its own. Its environment holds
-the Sonar token, but not the action's inputs, the runner's own tokens or
-variables like `GITHUB_ENV`. That limits what a mistake can reach, but it isn't
-a security boundary: a program running there could still read the action's own
-environment.
+The analyzers of the tested languages only read files. The sample projects check
+this on every change. Their analyses run among traps that fail the run if an
+analyzer starts a program or loads the project's code. See
+[how it's tested](#how-its-tested).
+
+The JavaScript analyzer got a closer look, because JavaScript projects hold a
+lot of configuration that is code. A project that tried every way to get its own
+code run showed that the analyzer uses its own Node.js and TypeScript. It ran
+none of the project's configuration files (ESLint, Babel, TypeScript and others)
+and loaded no code from its `node_modules`. It only read `tsconfig` files and
+type declarations as data.
+
+Analyzers of other languages haven't been checked. Some might start other
+programs. If you turn their language on with `build-arguments`, the action
+guarantees nothing for them.
+
+### The scanner
+
+The scanner runs in an empty directory of its own. Its environment holds the
+Sonar token, but not the action's inputs, the runner's own tokens or variables
+like `GITHUB_ENV`. That limits what a mistake can reach, but it isn't a security
+boundary: a program running there could still read the action's own environment.
 
 ## What the fork path carries
 
-The build only passes on the settings an analysis needs, picked by name. These
-are the project's structure (modules, sources, tests, binaries, libraries),
-report paths for coverage, tests and external issues, per-language settings and
-exclusions. Everything else stays behind. That includes the server, the token
-and the project key, scanner and branch settings, and anything that would start
-a program, like a JDBC driver or Node.js. It also includes the settings that
-decide each file's language: file suffixes and patterns, and
-`sonar.lang.patterns.*`. The Sonar workflow sets its own. See
-[the analyzers](#what-the-sonar-workflow-does).
+The build only passes on the settings an analysis needs, picked by name:
+
+- the project's structure: modules, sources, tests, binaries and libraries;
+- the paths of reports: coverage, tests and external issues;
+- per-language settings;
+- exclusions.
+
+Everything else stays behind:
+
+- the server, the token and the project key;
+- scanner and branch settings;
+- anything that would start a program, like a JDBC driver or Node.js;
+- the settings that decide each file's language: file suffixes and patterns, and
+  `sonar.lang.patterns.*`. The Sonar workflow sets its own, see
+  [the analyzers](#the-analyzers).
 
 Reports are recognised by their name (`…reportPaths` and similar), so a report
-from a tool Sonar adds later works without a new release of this action.
-Settings ending in `Paths` are checked one entry at a time, on the assumption
-that the scanner reads them as lists. Every documented one is.
+from a tool Sonar adds later works without a new release of this action. The
+action checks settings ending in `Paths` one entry at a time. That assumes the
+scanner reads them as lists, which every documented one does.
 
 The filtering can produce two warnings:
 
-- _The analysis of pull requests leaves out these settings_, from the build,
+- _The analysis of pull requests leaves out these settings_ comes from the build
   when it leaves something behind. If the analysis needs it, pass it with
   `build-arguments` in the Sonar workflow. That's your own configuration, so
   it's trusted.
-- _Dropped settings a build never ships_, from the Sonar workflow, when the
+- _Dropped settings a build never ships_ comes from the Sonar workflow when the
   artifact holds a setting no build would produce. Either someone tampered with
-  the artifact, or the two workflows run different versions of the action.
+  the artifact or the two workflows run different versions of the action.
 
-## Keeping up with the scanner
+## How it's tested
 
-Sonar updates its scanner on its own schedule, and some updates matter here.
-Dependency analysis, build-system autoconfiguration and the engine's habit of
-running `dotnet` to collect analytics all arrived that way.
+Sonar updates its scanner and engine on its own schedule. SonarQube Cloud uses a
+new engine as soon as Sonar releases it, with no change on your side. Some of
+these updates matter for safety. Dependency analysis, build-system
+autoconfiguration and the engine's habit of running `dotnet` to collect
+analytics all came in updates like these.
 
-So this project tests against the real thing, on every pull request and once a
-week: the scanner CLI it pins, together with the engines that SonarQube Cloud
-and the latest SonarQube Community Build currently serve. The tests check that
-the scanner reads settings exactly as the action checked them, that the engine
-builds the same modules and that no part of the engine beyond the reviewed ones
-can start a program. They also check three habits of the engine. A language's
-`sonar.lang.patterns` setting replaces its own patterns. The pattern that turns
-a language off matches no file. The engine loads analyzers only for the
-languages it finds.
+So this project tests against the real scanner and engines on every pull request
+and once a week. It uses the scanner CLI it pins and the engines that SonarQube
+Cloud and the latest SonarQube Community Build currently serve. The tests check
+that:
 
-The analysis of the test fixtures also sets traps. Fake build tools on the
-`PATH` fail the run if the analysis ever starts one. The fixtures' Maven and
-Gradle wrappers need Java, `wget` and `curl`. Fakes of these fail the run too.
-So do booby-trapped Gradle settings in the fixtures. The Node fixtures add
-booby-trapped configuration files and packages, which fail the run if the
-JavaScript analyzer ever loads them. One fixture also holds a Python file. The
-direct analysis must report its issue. The fork path must not analyse it.
+- the scanner reads settings exactly as the action checked them;
+- the engine builds the same modules as the action;
+- no part of the engine beyond the reviewed ones can start a program.
+
+For [turning languages off](#the-analyzers), they also check that:
+
+- a language's `sonar.lang.patterns` setting replaces its own patterns;
+- the pattern that turns a language off matches no file;
+- the engine loads analyzers only for the languages it finds.
+
+The analyses of the sample projects also set traps. Before the Sonar workflow
+analyses them, it puts fakes of these programs on the `PATH`:
+
+- the build tools of Maven, Gradle, Node, Python, Go, Rust and Scala;
+- Java, `wget` and `curl`, which the Maven and Gradle wrappers need;
+- `docker`, `podman`, `kubectl` and `helm`;
+- `dotnet`, except in the scanner's own directory. SonarQube Cloud's engine runs
+  it there to collect analytics.
+
+Each fake fails the run if anything starts it. The sample projects add traps of
+their own: Gradle settings, Node configuration files and Node packages. These
+fail the run if the analysis ever loads them.
+
+One sample project also holds a Python file with a known issue. It checks that
+untested languages stay off on the fork path. The direct analysis must report
+the issue, but the fork path must not analyse the file.
 
 Older SonarQube Server versions and commercial editions aren't tested.

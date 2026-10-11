@@ -74551,8 +74551,8 @@ function detectBuildTool(directory, requested = "auto") {
 	else if (requested !== "auto") throw new Error(`Unknown build tool '${requested}', expected one of: auto, maven, gradle, scanner`);
 	else if (maven && gradle) throw new Error(`Both Maven and Gradle build files found in '${directory}', set the build-tool input`);
 	else if (maven || gradle) name = maven ? "maven" : "gradle";
-	else if (existsSync$1(join(directory, "sonar-project.properties")) || existsSync$1(join(directory, "package.json"))) name = "scanner";
-	else throw new Error(`No Maven or Gradle build, sonar-project.properties or package.json found in '${directory}', set the working-directory input`);
+	else if (existsSync$1(join(directory, "sonar-project.properties"))) name = "scanner";
+	else throw new Error(`No Maven or Gradle build or sonar-project.properties found in '${directory}', set the working-directory input`);
 	if (name === "scanner") return {
 		name,
 		executable: "",

@@ -87,8 +87,10 @@ describe('detectBuildTool', () => {
     })
   })
 
-  it('runs the scanner on a Node project not configured yet', () => {
-    expect(detectBuildTool(project('package.json')).name).toBe('scanner')
+  it('needs sonar-project.properties to run the scanner on a Node project', () => {
+    expect(() => detectBuildTool(project('package.json'))).toThrow(
+      /No Maven or Gradle build or sonar-project.properties found/
+    )
   })
 
   it('prefers the Java build to the scanner settings next to it', () => {

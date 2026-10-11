@@ -261,8 +261,8 @@ function pullRequestNumber(): number | undefined {
   return event.pull_request.number
 }
 
-// Without them the scanner analyses the whole directory, which for a project picked by its package.json
-// usually means working-directory points at the wrong place.
+// Only reached with build-tool: scanner. Without settings the scanner analyses the whole directory,
+// which usually means working-directory points at the wrong place.
 function warnWithoutSettings(
   tool: BuildTool,
   directory: string,

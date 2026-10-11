@@ -82,8 +82,8 @@ build names a directory that the head doesn't have. The Sonar workflow then
 fails with _The artifact gives … no base directory in the checkout_.
 
 The simplest fix is to bring the pull request up to date with its base branch.
-Rebase it, or use the **Update branch** button on the pull request. The merge
-and the head then hold the same code.
+Rebase it or use the **Update branch** button on the pull request. The merge and
+the head then hold the same code.
 
 If you want the two to always match, check out the head in the build:
 
@@ -95,8 +95,8 @@ If you want the two to always match, check out the head in the build:
     ref: ${{ github.event.pull_request.head.sha }}
 ```
 
-This changes what your whole build tests on pull requests, so only do it if
-you're happy with that.
+This changes what your whole build tests on pull requests. Only do it if you're
+happy with that.
 
 ## Recipes
 

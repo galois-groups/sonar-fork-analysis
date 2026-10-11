@@ -46,8 +46,8 @@ steps:
 ```
 
 v2 runs `verify` for Maven and `check` for Gradle. It no longer needs `install`.
-If your build step ran other goals or flags, move them to `build-goals` and
-`build-arguments`.
+If your build step ran other goals or flags, move them to
+[`build-goals` and `build-arguments`](configuration.md#inputs).
 
 In the Sonar workflow, the action no longer sets up Java and needs a few more
 permissions. Before:

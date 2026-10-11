@@ -69,8 +69,9 @@ afterEach(() => {
   delete process.env.GITHUB_WORKSPACE
 })
 
+// Built the way the action builds it: the server's URL, then the repository.
 function origin(): string {
-  return `file://${join(server, 'owner', 'repo')}`
+  return `file://${server}/owner/repo`
 }
 
 describe('checkoutCommit', () => {
@@ -209,14 +210,7 @@ describe('cleanUpCheckout', () => {
 
 describe('verifyCheckout', () => {
   function clone(...args: string[]): void {
-    git(
-      root,
-      'clone',
-      '--quiet',
-      ...args,
-      `file://${join(server, 'owner', 'repo')}`,
-      workspace
-    )
+    git(root, 'clone', '--quiet', ...args, origin(), workspace)
   }
 
   it('rejects a checkout of another commit', async () => {

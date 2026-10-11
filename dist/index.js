@@ -1,4 +1,4 @@
-import { A as __commonJSMin, C as rmRF, D as HttpCodes, E as HttpClient, F as __toESM, M as __exportAll, N as __require, O as require_undici, P as __toCommonJS, S as mkdirP, T as BearerCredentialHandler, _ as notice, b as warning, c as jobEnvironment, d as debug, f as error, g as isDebug, h as info, i as trackedReporter, j as __esmMin, k as require_tunnel, l as toolEnvironment, m as getMultilineInput, o as prepareCheckout, p as getInput, r as runStatusTarget, s as verifyCheckout, t as noReporter, u as retry$2, v as setFailed, w as which, x as exec, y as setSecret } from "./shared.js";
+import { A as require_undici, C as exec, D as BearerCredentialHandler, E as which, F as __require, I as __toCommonJS, L as __toESM, M as __commonJSMin, N as __esmMin, O as HttpClient, P as __exportAll, S as warning, T as rmRF, _ as info, b as setFailed, c as jobEnvironment, d as realPath, f as retry$2, g as getMultilineInput, h as getInput, i as trackedReporter, j as require_tunnel, k as HttpCodes, l as toolEnvironment, m as error, o as prepareCheckout, p as debug, r as runStatusTarget, s as verifyCheckout, t as noReporter, u as realLocation, v as isDebug, w as mkdirP, x as setSecret, y as notice } from "./shared.js";
 import os, { EOL } from "os";
 import * as crypto from "crypto";
 import * as fs$7 from "fs";
@@ -20,7 +20,7 @@ import https from "node:https";
 import * as stream$2 from "stream";
 import { Readable as Readable$1 } from "stream";
 import { Buffer as Buffer$1 } from "buffer";
-import fs, { accessSync, constants as constants$1, copyFileSync, cpSync, existsSync as existsSync$1, globSync, lstatSync, mkdirSync, mkdtempSync, readFileSync as readFileSync$1, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import fs, { accessSync, constants as constants$1, copyFileSync, cpSync, existsSync as existsSync$1, globSync, lstatSync, mkdirSync, mkdtempSync, readFileSync as readFileSync$1, readdirSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import fs$1, { realpath } from "fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve as resolve$1, sep } from "node:path";
 //#region node_modules/@actions/artifact/lib/internal/shared/config.js
@@ -73805,25 +73805,6 @@ async function serverLanguages(host, token) {
 }
 function untestedLanguages(languages) {
 	return languages.filter((language) => !TESTED_LANGUAGES.includes(language));
-}
-//#endregion
-//#region src/real-path.ts
-var realPath = realpathSync.native;
-function present(path) {
-	try {
-		return lstatSync(path, { throwIfNoEntry: false }) !== void 0;
-	} catch {
-		return false;
-	}
-}
-function realLocation(path) {
-	let existing = path;
-	while (!present(existing)) existing = dirname(existing);
-	try {
-		return join(realPath(existing), relative(existing, path));
-	} catch {
-		return;
-	}
 }
 //#endregion
 //#region src/settings.ts

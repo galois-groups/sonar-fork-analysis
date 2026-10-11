@@ -13,8 +13,8 @@ import { randomInt } from "node:crypto";
 import { StringDecoder } from "string_decoder";
 import * as child from "child_process";
 import { setTimeout as setTimeout$1 } from "timers";
-import { readFileSync as readFileSync$1, readdirSync, realpathSync, rmSync } from "node:fs";
-import { join, resolve as resolve$1 } from "node:path";
+import { lstatSync, readFileSync as readFileSync$1, readdirSync, realpathSync, rmSync } from "node:fs";
+import { dirname, join, relative, resolve as resolve$1 } from "node:path";
 //#region \0rolldown/runtime.js
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -17915,6 +17915,25 @@ async function retry(action, policy = CHECKOUT_POLICY) {
 	return action();
 }
 //#endregion
+//#region src/real-path.ts
+var realPath = realpathSync.native;
+function present(path) {
+	try {
+		return lstatSync(path, { throwIfNoEntry: false }) !== void 0;
+	} catch {
+		return false;
+	}
+}
+function realLocation(path) {
+	let existing = path;
+	while (!present(existing)) existing = dirname(existing);
+	try {
+		return join(realPath(existing), relative(existing, path));
+	} catch {
+		return;
+	}
+}
+//#endregion
 //#region src/environment.ts
 function jobEnvironment() {
 	return Object.fromEntries(Object.entries(process.env).filter((entry) => entry[1] !== void 0 && !entry[0].startsWith("INPUT_")));
@@ -18008,7 +18027,7 @@ async function prepareCheckout(workspace, checkout) {
 }
 function sameDirectory(a, b) {
 	try {
-		return realpathSync(a) === realpathSync(b);
+		return realPath(a) === realPath(b);
 	} catch {
 		return false;
 	}
@@ -18158,6 +18177,6 @@ function readNote(saved) {
 	}
 }
 //#endregion
-export { __commonJSMin as A, rmRF as C, HttpCodes as D, HttpClient as E, __toESM as F, __exportAll as M, __require as N, require_undici as O, __toCommonJS as P, mkdirP as S, BearerCredentialHandler as T, notice as _, cleanUpCheckout as a, warning as b, jobEnvironment as c, debug as d, error as f, isDebug as g, info as h, trackedReporter as i, __esmMin as j, require_tunnel as k, toolEnvironment as l, getMultilineInput as m, reportInterrupted as n, prepareCheckout as o, getInput as p, runStatusTarget as r, verifyCheckout as s, noReporter as t, retry as u, setFailed as v, which as w, exec as x, setSecret as y };
+export { require_undici as A, exec as C, BearerCredentialHandler as D, which as E, __require as F, __toCommonJS as I, __toESM as L, __commonJSMin as M, __esmMin as N, HttpClient as O, __exportAll as P, warning as S, rmRF as T, info as _, cleanUpCheckout as a, setFailed as b, jobEnvironment as c, realPath as d, retry as f, getMultilineInput as g, getInput as h, trackedReporter as i, require_tunnel as j, HttpCodes as k, toolEnvironment as l, error as m, reportInterrupted as n, prepareCheckout as o, debug as p, runStatusTarget as r, verifyCheckout as s, noReporter as t, realLocation as u, isDebug as v, mkdirP as w, setSecret as x, notice as y };
 
 //# sourceMappingURL=shared.js.map

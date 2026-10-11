@@ -54,13 +54,18 @@ them.
 Pull requests from forks only get the
 [tested languages](../README.md#languages-on-pull-requests-from-forks) analysed.
 To turn a language on, set its file patterns in `build-arguments` in the Sonar
-workflow. The action logs Sonar's key for each language it turns off, such as
-`py` for Python:
+workflow. For Python:
 
 ```yaml
 build-arguments: |
   -Dsonar.lang.patterns.py=**/*.py
 ```
+
+The setting names the language by its Sonar key. Keys aren't always the
+language's name: Python is `py`, HTML is `web` and C# is `cs`. The Sonar
+workflow's log lists the key of each language it turns off. SonarQube Cloud
+[lists all its keys](https://sonarcloud.io/api/languages/list). For SonarQube
+Server, the same list is at `<your server>/api/languages/list`.
 
 A language you turn on is untested: use it at your own risk.
 

@@ -73,13 +73,14 @@ A language you turn on is untested: use it at your own risk.
 
 On a pull request, `actions/checkout` checks out a merge of the pull request
 into the base branch. The Sonar workflow analyses the pull request's head
-instead. This only matters when a file changed both in the pull request and on
-the base branch since the pull request branched off. Its binaries and coverage
-then come from slightly different code. Usually the only sign is a scanner
-warning such as _Cannot import coverage information for file_. It can also stop
-the analysis. When the base branch gains a module or a source directory, the
-build names a directory that the head doesn't have. The Sonar workflow then
-fails with _The artifact gives … no base directory in the checkout_.
+instead. Usually this only matters when a file changed both in the pull request
+and on the base branch since the pull request branched off. Its binaries and
+coverage then come from slightly different code. Usually the only sign is a
+scanner warning such as _Cannot import coverage information for file_. It can
+also stop the analysis. When the base branch gains a module or a source
+directory, the build names a directory that the head doesn't have. The Sonar
+workflow then fails with _The artifact gives … no base directory in the
+checkout_.
 
 The simplest fix is to bring the pull request up to date with its base branch.
 Rebase it or use the **Update branch** button on the pull request. The merge and
@@ -145,8 +146,8 @@ jobs:
 ```
 
 The build may skip a project when none of its files changed. That project's
-Sonar job then ends without doing anything. This works as long as the build
-prepared at least one other project. If the build skips them all, see
+Sonar job then ends without doing anything. This works as long as the build ran
+the action for at least one other project. If the build skips them all, see
 [builds that don't always run the action](#builds-that-dont-always-run-the-action).
 
 ### Skipping runs with nothing to do
@@ -305,6 +306,9 @@ Tested and untested mean the same as for
   scanner without a warning, such as the server's URL or a proxy. The Sonar
   workflow sets those itself. See
   [what the fork path carries](how-it-works.md#what-the-fork-path-carries).
+- On the fork path, the build collects its settings with Sonar's simulation
+  mode. Sonar doesn't document it, so a release could change it. See
+  [settings from the build](how-it-works.md#settings-from-the-build).
 - On self-hosted Windows runners whose workspace is on a RAM disk, the action
   can fail with `EISDIR` while it resolves paths. Use a regular disk.
 - The build's `sonar.region` isn't carried. For SonarQube Cloud's US region, add

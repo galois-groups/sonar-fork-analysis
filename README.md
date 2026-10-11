@@ -59,9 +59,8 @@ Coming from v1? It no longer gets fixes, not even security fixes. See
 ¹ Rules that need types find fewer issues because there's no `node_modules` to
 read the types from. Setting `nodeLinker: node-modules` avoids this.
 
-² On pull requests from forks, these languages are only analysed once you turn
-them on. See
-[languages on pull requests from forks](#languages-on-pull-requests-from-forks).
+² On pull requests from forks, these languages are only analysed once you
+[turn them on](docs/configuration.md#languages-on-pull-requests-from-forks).
 
 ³ They need Sonar's scanner for .NET or Sonar's build wrapper.
 
@@ -76,8 +75,8 @@ them on. See
 > requests from forks. Use it at your own risk. That includes languages you turn
 > on yourself.
 
-The action is tested on GitHub's Linux runners. The build workflow is also
-tested on Windows and macOS. See
+The action is tested on GitHub's Linux x64 runners. The build's preparation is
+also tested on Windows x64 and macOS ARM64. See
 [supported runners](docs/configuration.md#supported-runners).
 
 ### Languages on pull requests from forks
@@ -115,7 +114,10 @@ token without one is removed after 60 days without use.
 
 What you add depends on who runs the build. Either way, your build workflow must
 run on `pull_request`, not `pull_request_target`. With `pull_request_target`, a
-fork's code would run with your secrets, so the action refuses to build there.
+fork's code would run with your secrets, so the action refuses to run there.
+
+Run the build workflow on pushes to your default branch too. Sonar compares each
+pull request with that branch's analysis.
 
 #### If the action runs your build: Maven and Gradle
 

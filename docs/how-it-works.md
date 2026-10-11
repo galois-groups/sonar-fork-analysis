@@ -23,13 +23,14 @@ flowchart LR
     analyze["analyze mode<br/>checks the artifact<br/>and runs the scanner"]
   end
   server[("SonarQube Cloud<br/>or Server")]
+  checks(["Status and check<br/>on the pull request"])
   pr -- "1" --> prepare
   prepare -- "2" --> artifact
   prepare -. "3. workflow_run" .-> analyze
-  analyze -. "4. status" .-> pr
+  analyze -. "4. status" .-> checks
   artifact -- "5" --> analyze
   analyze -- "6" --> server
-  server -- "7. check" --> pr
+  server -- "7. check" --> checks
 ```
 
 1. The pull request starts your build workflow. It runs without the Sonar token.
@@ -65,9 +66,10 @@ flowchart LR
   subgraph sonar["Sonar workflow, Sonar token"]
     analyze["analyze mode<br/>finds the marker<br/>and stops"]
   end
+  check(["Check on the<br/>pull request"])
   own -- "1" --> direct
   direct -- "2" --> server
-  server -- "3. check" --> own
+  server -- "3. check" --> check
   direct -- "4" --> marker
   direct -. "5. workflow_run" .-> analyze
   marker -- "6" --> analyze
@@ -190,9 +192,9 @@ files. Turning languages off doesn't stop that. That plugin only reads files.
 
 The analyzers of the tested languages only read files. The sample projects check
 this on every change, against SonarQube Cloud's analyzers. Their analyses run
-among traps: fake build tools and other programs, and booby-trapped project
-files. A trap fails the run if an analyzer starts one of those programs or loads
-one of those files. See [how it's tested](#how-its-tested).
+among traps: fake programs and booby-trapped project files. A trap fails the run
+if an analyzer starts one of those programs or loads one of those files. See
+[how it's tested](#how-its-tested).
 
 The JavaScript analyzer got a closer look, because JavaScript projects hold a
 lot of configuration that is code. A project that tried every way to get its own

@@ -73,16 +73,19 @@ A language you turn on is untested: use it at your own risk.
 
 On a pull request, `actions/checkout` checks out a merge of the pull request
 into the base branch. The Sonar workflow analyses the pull request's head
-instead. This rarely matters. It only affects files that changed both in the
-pull request and on the base branch since the pull request branched off. Their
-binaries and coverage then come from slightly different code. Usually the only
-sign is a scanner warning such as _Cannot import coverage information for file_.
-It can also stop the analysis. When the base branch gains a module or a source
-directory, the build names a directory that the head doesn't have. The Sonar
-workflow then fails with _The artifact gives … no base directory in the
-checkout_ until the pull request is rebased.
+instead. This only matters when a file changed both in the pull request and on
+the base branch since the pull request branched off. Its binaries and coverage
+then come from slightly different code. Usually the only sign is a scanner
+warning such as _Cannot import coverage information for file_. It can also stop
+the analysis. When the base branch gains a module or a source directory, the
+build names a directory that the head doesn't have. The Sonar workflow then
+fails with _The artifact gives … no base directory in the checkout_.
 
-If you want the two to match exactly, check out the head in the build:
+The simplest fix is to bring the pull request up to date with its base branch.
+Rebase it, or use the **Update branch** button on the pull request. The merge
+and the head then hold the same code.
+
+If you want the two to always match, check out the head in the build:
 
 ```yaml
 - uses: actions/checkout@v7

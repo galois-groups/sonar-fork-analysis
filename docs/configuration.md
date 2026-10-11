@@ -1,0 +1,310 @@
+# Configuration
+
+## Inputs
+
+| Input                | Required              | Default            | Description                                                                                                                                                                                             |
+| -------------------- | --------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `project-key`        | Yes                   |                    | The Sonar project key. Use the same one in the build and the Sonar workflow.                                                                                                                            |
+| `sonar-organization` | For SonarQube Cloud   |                    | The Sonar organization.                                                                                                                                                                                 |
+| `sonar-token`        | In the Sonar workflow |                    | The Sonar token. It's empty on pull requests from forks, which makes the action take the fork path.                                                                                                     |
+| `sonar-host-url`     | For SonarQube Server  |                    | The server URL. Leave it empty for SonarQube Cloud or to use the `SONAR_HOST_URL` environment variable. Direct analyses also fall back to the build's own `sonar.host.url`, the Sonar workflow doesn't. |
+| `mode`               | No                    | `auto`             | `auto`, or `direct`, `prepare`, `analyze` to force one part.                                                                                                                                            |
+| `working-directory`  | No                    | `.`                | The directory holding the project.                                                                                                                                                                      |
+| `build-tool`         | No                    | `auto`             | `auto`, `maven`, `gradle` or `scanner`, see [other projects](../README.md#other-projects).                                                                                                              |
+| `build-goals`        | No                    | `verify` / `check` | Maven goals or Gradle tasks to run. Not with `scanner`.                                                                                                                                                 |
+| `build-arguments`    | No                    |                    | Extra build flags. In the Sonar workflow they're passed to the scanner instead, for example `-Dsonar.projectName=App`. The scanner doesn't run in the checkout there, so use absolute paths.            |
+| `checkout`           | No                    | `true`             | Whether the Sonar workflow checks out the analysed commit. `false` to do it yourself, see [your own checkout](#your-own-checkout).                                                                      |
+| `github-token`       | No                    | `github.token`     | Used to download the build's artifact, look up the pull request, check it out and post the status.                                                                                                      |
+
+`build-goals` and `build-arguments` take one entry per line, so write several as
+a YAML block:
+
+```yaml
+build-goals: |
+  clean
+  install
+build-arguments: |
+  -Pci
+  -DskipITs
+```
+
+## Commit statuses and required checks
+
+Sonar posts its own check on every analysed pull request, such as _SonarCloud
+Code Analysis_. On pull requests from forks it arrives once the Sonar workflow
+has run, a little after the build's own checks. To block merging until the
+analysis passes, require that check in your branch rules, with the Sonar app as
+its source. If the fork path fails, the check never arrives, so merging stays
+blocked.
+
+The Sonar workflow also posts a status called _Sonar fork analysis (your project
+key)_ when it has `statuses: write`. It shows why a check is missing and links
+to the run. It stays pending while the analysis runs and then turns to success
+or failure. It's posted for pull requests that take the fork path. It's also
+posted as a failure when the Sonar workflow finds nothing to analyse, for
+example after a push the build didn't analyse. Pull requests from your own
+repository normally don't get it. Requiring it would block them.
+
+## Languages on pull requests from forks
+
+To turn a language on, set its file patterns in `build-arguments` in the Sonar
+workflow. The action logs the Sonar names of the languages it turns off. For
+Python:
+
+```yaml
+build-arguments: |
+  -Dsonar.lang.patterns.py=**/*.py
+```
+
+A language you turn on is untested: use it at your own risk.
+
+## Which commit the build tests
+
+On a pull request, `actions/checkout` checks out a merge of the pull request
+into the base branch, but the Sonar workflow analyses the pull request's head.
+This rarely matters. It only affects files that changed both in the pull request
+and on the base branch since the pull request branched off. Their binaries and
+coverage then come from slightly different code, and the only visible sign is
+usually a scanner warning such as _Cannot import coverage information for file_.
+It can also stop the analysis. When the base branch gains a module or a source
+directory, the build names a directory that the head doesn't have. The Sonar
+workflow then fails with _The artifact gives … no base directory in the
+checkout_ until the pull request is rebased.
+
+If you want the two to match exactly, check out the head in the build:
+
+```yaml
+- uses: actions/checkout@v7
+  with:
+    persist-credentials: false
+    fetch-depth: 0
+    ref: ${{ github.event.pull_request.head.sha }}
+```
+
+This changes what your whole build tests on pull requests, so only do it if
+you're happy with that.
+
+## Recipes
+
+### Several projects
+
+Run the action once per project, each with its own project key and
+`working-directory`, for example with a matrix. In the build workflow:
+
+```yaml
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - project-key: my-org_service-a
+            working-directory: service-a
+          - project-key: my-org_service-b
+            working-directory: service-b
+    runs-on: ubuntu-latest
+    steps:
+      # Your existing checkout and Java setup.
+      - uses: galois-groups/sonar-fork-analysis@v2
+        with:
+          project-key: ${{ matrix.project-key }}
+          working-directory: ${{ matrix.working-directory }}
+          sonar-organization: my-org
+          sonar-token: ${{ secrets.SONAR_TOKEN }}
+```
+
+The Sonar workflow only needs the project keys:
+
+```yaml
+jobs:
+  sonar:
+    if: github.event.workflow_run.conclusion == 'success'
+    strategy:
+      matrix:
+        project-key: [my-org_service-a, my-org_service-b]
+    runs-on: ubuntu-latest
+    # Same permissions as for a single project.
+    steps:
+      - uses: galois-groups/sonar-fork-analysis@v2
+        with:
+          project-key: ${{ matrix.project-key }}
+          sonar-organization: my-org
+          sonar-token: ${{ secrets.SONAR_TOKEN }}
+```
+
+If the build skips a project, for example because none of its files changed,
+that project's Sonar job ends without doing anything, as long as the build
+prepared another project. If the build skips them all, see
+[builds that don't always run the action](#builds-that-dont-always-run-the-action).
+
+### Skipping runs with nothing to do
+
+The Sonar workflow runs after every build and stops straight away when the build
+analysed directly. To skip it completely, run its job only for forks and
+Dependabot:
+
+```yaml
+if: >
+  github.event.workflow_run.conclusion == 'success' &&
+  (github.event.workflow_run.head_repository.full_name != github.repository ||
+   github.event.workflow_run.actor.login == 'dependabot[bot]')
+```
+
+### Builds that don't always run the action
+
+The Sonar workflow expects every build it follows to have run the action.
+Otherwise it reports that the build left nothing to analyse. If the build
+ignores some changes, ignore them in its trigger, so the Sonar workflow never
+starts:
+
+```yaml
+on:
+  pull_request:
+    paths-ignore: ['docs/**']
+```
+
+If the build skips the action on some events, skip them in the Sonar job too:
+
+```yaml
+if: >
+  github.event.workflow_run.conclusion == 'success' &&
+  github.event.workflow_run.event != 'schedule'
+```
+
+### Only for forks, next to another Sonar setup
+
+If you already analyse your own pull requests and pushes another way, such as
+with Sonar's own action, you can use this action for forks and Dependabot only.
+In the build, run it only on those pull requests and without a token, so it
+always takes the fork path:
+
+<!-- prettier-ignore -->
+```yaml
+- uses: galois-groups/sonar-fork-analysis@v2
+  if: >
+    github.event_name == 'pull_request' &&
+    (github.event.pull_request.head.repo.full_name != github.repository ||
+    github.actor == 'dependabot[bot]')
+  with:
+    project-key: my-org_my-project
+    sonar-organization: my-org
+```
+
+In the Sonar workflow, use the job condition from
+[skipping runs](#skipping-runs-with-nothing-to-do).
+
+### Your own checkout
+
+The action checks out the analysed commit itself. Set `checkout: false` to do it
+yourself, for example to get submodules or Git LFS files. Your checkout must be
+at the analysed commit, with full history and no persisted credentials. Its
+`origin` must point at your repository, which is where Sonar finds the base
+branch.
+
+```yaml
+- uses: actions/checkout@v7
+  with:
+    ref: ${{ github.event.workflow_run.head_sha }}
+    fetch-depth: 0
+    persist-credentials: false
+    submodules: true
+- uses: galois-groups/sonar-fork-analysis@v2
+  with:
+    checkout: false
+    # …
+```
+
+Be careful with private submodules. Checking them out needs a token that can
+read your other repositories. A fork can change `.gitmodules` to point a
+submodule at any of them. The checkout then fetches that repository. Its code
+goes to Sonar with the analysis. If your Sonar project is public, anyone can
+read that code there.
+
+### Caching the Sonar scanner
+
+The action downloads Sonar's scanner every time it runs it, in the Sonar
+workflow and in the build of [other projects](../README.md#other-projects).
+That's about 50 MB. The action keeps the download in
+`${{ runner.tool_cache }}/sonar-fork-analysis` and checks it against the pinned
+checksum before each use. So caching that directory is safe. In the build, add
+this before the action:
+
+```yaml
+- uses: actions/cache@v6
+  with:
+    path: ${{ runner.tool_cache }}/sonar-fork-analysis
+    key: sonar-scanner-${{ hashFiles('.github/workflows/*.yml') }}
+```
+
+The key changes whenever your workflows do, so a new version of the action saves
+its own copy. In the Sonar workflow, the workspace is still empty before the
+action. That key can't be worked out there. Restore the newest copy instead:
+
+```yaml
+- uses: actions/cache/restore@v6
+  with:
+    path: ${{ runner.tool_cache }}/sonar-fork-analysis
+    key: sonar-scanner-
+    restore-keys: sonar-scanner-
+```
+
+The Sonar workflow can only restore what a build on your main branch saved. Only
+builds of other projects run the scanner, so Maven and Gradle projects gain
+nothing. Self-hosted runners keep the directory between jobs without these
+steps.
+
+## Supported runners
+
+| Runner      | Build workflow | Sonar workflow |
+| ----------- | -------------- | -------------- |
+| Linux x64   | Tested         | Tested         |
+| Windows x64 | Tested⁴        | Untested       |
+| macOS ARM64 | Tested⁴        | Untested       |
+| Linux ARM64 | Untested       | Untested       |
+| macOS Intel | Untested       | Untested       |
+
+⁴ Only the build's preparation runs there: Maven, Gradle and npm on Windows, npm
+on macOS. Nothing analyses those artifacts.
+
+<!-- prettier-ignore -->
+> [!NOTE]
+> Tested means this repository's workflows test it on every change. Each sample
+> project in `fixtures/` is analysed twice: directly and through the fork path.
+> Both analyses must find the same issues, coverage and tests. The sample
+> projects hold every language the fork path analyses.
+>
+> Untested means we don't guarantee that the token stays safe on pull requests
+> from forks. Use it at your own risk. That includes languages you turn on yourself.
+
+## Limitations
+
+- When the action runs the scanner, it reads settings only from
+  `sonar-project.properties` and `build-arguments`. Unlike Sonar's npm scanner,
+  it doesn't guess any from `package.json`, so set your coverage report path
+  yourself.
+
+- On fork pull requests, only the analyzers of tested languages run. See
+  [languages on pull requests from forks](#languages-on-pull-requests-from-forks).
+- Dependency analysis (SCA) and the engine's build-system autoconfiguration are
+  off on fork pull requests, because both run the project's build tools. See
+  [what stays off](security.md#what-stays-off-on-the-fork-path).
+- Some of the build's settings never reach the Sonar workflow: those about the
+  server, the scanner or the branch, and those that would start a program. The
+  build warns about most of them. It drops settings about the server and the
+  scanner silently, such as the server's URL or a proxy. The Sonar workflow sets
+  those itself. See
+  [what the fork path carries](how-it-works.md#what-the-fork-path-carries).
+- On self-hosted Windows runners whose workspace is on a RAM disk, the action
+  can fail with `EISDIR` while it resolves paths. Use a regular disk.
+- The build's `sonar.region` isn't carried. For SonarQube Cloud's US region, add
+  `-Dsonar.region=us` to `build-arguments` in the Sonar workflow.
+- The action looks for `mvnw` and `gradlew` only in `working-directory`, not in
+  parent directories.
+- Where the scanner has no build with Java bundled, it needs Java on the `PATH`.
+  Alpine images can't run the bundled Java. Projects on a newer Java than the
+  scanner's may need `setup-java` and `-Dsonar.java.jdkHome` in
+  `build-arguments`.
+- Each release of the action runs one fixed version of the Sonar scanner, which
+  you can't change. To get a newer one, update the action.
+- SonarQube Server needs an edition that supports pull request analysis. The
+  action is tested against SonarQube Cloud and the latest SonarQube Community
+  Build.

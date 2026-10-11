@@ -76774,7 +76774,7 @@ function pullRequestNumber() {
 	return JSON.parse(readFileSync$1(eventPath, "utf8")).pull_request.number;
 }
 function warnWithoutSettings(tool, directory, buildArguments) {
-	if (tool.name === "scanner" && !existsSync$1(join(directory, "sonar-project.properties")) && !buildArguments.some((arg) => arg.startsWith("-Dsonar.sources="))) warning(`No sonar-project.properties in ${directory}, so the scanner analyses the whole directory: set sonar.sources there, or point working-directory at the project`);
+	if (tool.name === "scanner" && !existsSync$1(join(directory, "sonar-project.properties")) && !buildArguments.some((arg) => arg.startsWith("-Dsonar.sources="))) warning(`No sonar-project.properties in ${directory}, so the scanner analyses the whole directory: add one with sonar.sources or point working-directory at the project`);
 }
 async function executable(tool) {
 	return tool.name === "scanner" ? installScanner() : tool.executable;

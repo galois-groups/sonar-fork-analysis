@@ -274,7 +274,7 @@ function warnWithoutSettings(
     !buildArguments.some((arg) => arg.startsWith('-Dsonar.sources='))
   )
     core.warning(
-      `No sonar-project.properties in ${directory}, so the scanner analyses the whole directory: set sonar.sources there, or point working-directory at the project`
+      `No sonar-project.properties in ${directory}, so the scanner analyses the whole directory: add one with sonar.sources or point working-directory at the project`
     )
 }
 

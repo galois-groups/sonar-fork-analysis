@@ -26,8 +26,8 @@ flowchart LR
   pr -- "1" --> prepare
   prepare -- "2" --> artifact
   prepare -. "3. workflow_run" .-> analyze
-  artifact -- "4" --> analyze
-  analyze -. "5. status" .-> pr
+  analyze -. "4. status" .-> pr
+  artifact -- "5" --> analyze
   analyze -- "6" --> server
   server -- "7. check" --> pr
 ```
@@ -43,10 +43,11 @@ flowchart LR
    it also holds the type declarations from `node_modules`.
 3. When the build finishes, GitHub starts your Sonar workflow through
    `workflow_run`. It runs in your repository and has the Sonar token.
-4. The action downloads the artifact and checks out the pull request. It checks
+4. Once the action finds the build's artifact, it posts a pending status on the
+   pull request if the job has `statuses: write`. The status turns to success or
+   failure when the analysis ends.
+5. The action checks out the pull request and downloads the artifact. It checks
    the artifact's settings against an allowlist.
-5. If the job has `statuses: write`, the action posts a pending status on the
-   pull request. It turns to success or failure when the analysis ends.
 6. The action runs Sonar's scanner on the sources and the build output. The
    scanner sends the analysis to the server. Nothing from the pull request runs.
 7. Sonar posts its check on the pull request as usual.
@@ -188,9 +189,10 @@ some YAML and JSON files by their content, such as CloudFormation and Ansible
 files. Turning languages off doesn't stop that. That plugin only reads files.
 
 The analyzers of the tested languages only read files. The sample projects check
-this on every change. Their analyses run among traps that fail the run if an
-analyzer starts a program or loads the project's code. See
-[how it's tested](#how-its-tested).
+this on every change, against SonarQube Cloud's analyzers. Their analyses run
+among traps: fake build tools and other programs, and booby-trapped project
+files. A trap fails the run if an analyzer starts one of those programs or loads
+one of those files. See [how it's tested](#how-its-tested).
 
 The JavaScript analyzer got a closer look, because JavaScript projects hold a
 lot of configuration that is code. A project that tried every way to get its own
@@ -266,8 +268,9 @@ For [turning languages off](#the-analyzers), they also check that:
 - the pattern that turns a language off matches no file;
 - the engine loads analyzers only for the languages it finds.
 
-The analyses of the sample projects also set traps. Before the Sonar workflow
-analyses them, it puts fakes of these programs on the `PATH`:
+The analyses of the sample projects also set traps. These analyses run against
+SonarQube Cloud only. Before the Sonar workflow analyses them, it puts fakes of
+these programs on the `PATH`:
 
 - the build tools of Maven, Gradle, Node, Python, Go, Rust and Scala;
 - Java, `wget` and `curl`, which the Maven and Gradle wrappers need;

@@ -17,18 +17,18 @@ GitHub doesn't give secrets to workflows triggered by a fork, so the usual Sonar
 setup can't analyse their pull requests. This action splits the work in two. The
 build workflow builds the pull request without the Sonar token. A second
 workflow then analyses the result with the token. It never runs any of the pull
-request's code. Your own pushes and pull requests have the token, so the build
-analyses them directly. This is the split
+request's code. This is the split
 [Sonar's documentation describes for forks](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/ci-based-analysis/github-actions-for-sonarcloud#analyzing-fork-pull-requests),
 packaged as one action. It works with Maven, Gradle and any other project
 Sonar's scanner analyses, such as JavaScript, TypeScript or Python. Binaries,
 libraries, coverage, test reports and the settings your build defines all carry
-over.
+over. Your own pushes and pull requests have the token, so the build analyses
+them directly.
 
 If you don't need coverage on pull requests from forks, SonarQube Cloud's
 [Automatic Analysis](https://docs.sonarsource.com/sonarqube-cloud/advanced-setup/automatic-analysis/)
-handles them with no setup. But it doesn't support monorepos, and it analyses
-some languages in less depth.
+handles them with no setup. But it doesn't support monorepos and analyses some
+languages in less depth.
 
 Coming from v1? It no longer gets fixes, not even security fixes. See
 [migrating from v1](docs/migrating-from-v1.md).
@@ -40,7 +40,7 @@ Coming from v1? It no longer gets fixes, not even security fixes. See
 - [Security](docs/security.md): what stays off, what a fork can still influence
   and how to harden your setup.
 - [How it works](docs/how-it-works.md): what the Sonar workflow does with the
-  pull request, and how this project tests it.
+  pull request and how this project tests it.
 - [Troubleshooting](docs/troubleshooting.md): what each message means.
 - [Contributing](CONTRIBUTING.md)
 
@@ -55,8 +55,8 @@ Coming from v1? It no longer gets fixes, not even security fixes. See
 | Python, Go, PHP and others with a `sonar-project.properties` | Runs after your build and tests² | No     |
 | .NET, C, C++ and Objective-C                                 | Not supported³                   |        |
 
-¹ Rules that need types find less, because there's no `node_modules` to read the
-types from. Setting `nodeLinker: node-modules` avoids this.
+¹ Rules that need types find fewer issues because there's no `node_modules` to
+read the types from. Setting `nodeLinker: node-modules` avoids this.
 
 ² On pull requests from forks, these languages are only analysed once you turn
 them on. See
@@ -107,9 +107,10 @@ why the others stay off.
    with only _Execute analysis_ on the project. An expiry date is optional, but
    a token without one is removed after 60 days without use.
 2. Gradle builds need the `org.sonarqube` plugin, 2.1 or later. Maven builds
-   need nothing. The action runs the latest `sonar-maven-plugin`, or the version
-   your pom pins in `<plugins>` or `<pluginManagement>`. A pinned version must
-   be 3.2 or later. Dependabot can keep either up to date.
+   need nothing. The action runs the version of `sonar-maven-plugin` that your
+   pom pins in `<plugins>` or `<pluginManagement>`. That version must be 3.2 or
+   later. If your pom pins none, the action runs the latest. Dependabot can keep
+   either up to date.
 3. Add the action to your build workflow:
 
    ```yaml
@@ -184,12 +185,11 @@ and how to harden your setup.
 
 ### Other projects
 
-For other projects, such as JavaScript, TypeScript, Python, Go or PHP, the
+Other projects include JavaScript, TypeScript, Python, Go and PHP. For them, the
 action doesn't build anything. Add it after your own build and test steps. It
-runs Sonar's scanner, which reads its settings from your
-`sonar-project.properties`, as Sonar's own scan action does. The action
-recognises these projects by that file or by a `package.json`. For a Node
-project:
+runs Sonar's scanner, as Sonar's own scan action does. The scanner reads its
+settings from your `sonar-project.properties`. The action recognises these
+projects by that file or by a `package.json`. For a Node project:
 
 ```yaml
 steps:
@@ -221,11 +221,12 @@ sonar.javascript.lcov.reportPaths=coverage/lcov.info
 Other languages have their own report settings, such as
 `sonar.python.coverage.reportPaths=coverage.xml` for Python. On pull requests
 from forks, Python is only analysed once you
-[turn it on](docs/configuration.md#languages-on-pull-requests-from-forks). For a
-Node project, the action also passes the type declarations in your
-`node_modules` to the Sonar workflow, along with the links your package manager
-makes there. Rules that need types then work on pull requests from forks too,
-even across the packages of a monorepo.
+[turn it on](docs/configuration.md#languages-on-pull-requests-from-forks).
+
+For a Node project, the action also passes the type declarations in your
+`node_modules` to the Sonar workflow. It passes the links your package manager
+makes there too. Rules that need types then work on pull requests from forks as
+well, even across the packages of a monorepo.
 
 ## Real-world examples
 
@@ -236,8 +237,8 @@ and
 [Sonar workflow](https://github.com/instancio/instancio/blob/main/.github/workflows/sonar.yml).
 
 This repository analyses itself with the action too. It's a TypeScript project
-that runs the scanner after its tests, with a `sonar-project.properties` file.
-See its [build workflow](.github/workflows/ci.yml) and
+with a `sonar-project.properties` file. It runs the scanner after its tests. See
+its [build workflow](.github/workflows/ci.yml) and
 [Sonar workflow](.github/workflows/sonar.yml).
 
 ## Reporting vulnerabilities

@@ -1,9 +1,21 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { checkoutCommit, verifyCheckout } from '../src/checkout.js'
+import * as core from '../__fixtures__/core.js'
+
+vi.doMock('@actions/core', () => core)
+
+const { checkoutCommit, cleanUpCheckout, prepareCheckout, verifyCheckout } =
+  await import('../src/checkout.js')
 
 let root: string
 let server: string
@@ -21,6 +33,7 @@ function git(cwd: string, ...args: string[]): string {
 }
 
 beforeEach(() => {
+  vi.resetAllMocks()
   root = mkdtempSync(join(tmpdir(), 'checkout-'))
   // Serves owner/repo from disk, standing in for https://github.com/owner/repo.
   server = join(root, 'server')
@@ -53,7 +66,12 @@ beforeEach(() => {
 
 afterEach(() => {
   rmSync(root, { recursive: true, force: true })
+  delete process.env.GITHUB_WORKSPACE
 })
+
+function origin(): string {
+  return `file://${join(server, 'owner', 'repo')}`
+}
 
 describe('checkoutCommit', () => {
   const checkout = { repository: 'owner/repo', token: 'a-token' }
@@ -67,7 +85,9 @@ describe('checkoutCommit', () => {
 
     expect(git(workspace, 'rev-parse', 'HEAD')).toBe(first)
     expect(git(workspace, 'rev-parse', '--is-shallow-repository')).toBe('false')
-    await expect(verifyCheckout(workspace, first)).resolves.toBeUndefined()
+    await expect(
+      verifyCheckout(workspace, first, origin())
+    ).resolves.toBeUndefined()
   })
 
   it("takes a fork's commit from this repository, along with its branches", async () => {
@@ -102,17 +122,88 @@ describe('checkoutCommit', () => {
       })
     ).rejects.toThrow(/git fetch failed/)
   })
+})
 
-  it('refuses a workspace that already has a checkout', async () => {
+describe('prepareCheckout', () => {
+  const checkout = { repository: 'owner/repo', token: 'a-token' }
+
+  it('checks out an empty workspace itself, and notes it for the clean-up', async () => {
+    await prepareCheckout(workspace, {
+      ...checkout,
+      serverUrl: `file://${server}`,
+      sha: first
+    })
+
+    expect(git(workspace, 'rev-parse', 'HEAD')).toBe(first)
+    expect(core.saveState).toHaveBeenCalledWith('own-checkout', 'true')
+  })
+
+  it('takes the checkout already in the workspace as it is', async () => {
+    git(root, 'clone', '--quiet', origin(), workspace)
+
+    await prepareCheckout(workspace, {
+      ...checkout,
+      serverUrl: `file://${server}`,
+      sha: first
+    })
+
+    expect(git(workspace, 'rev-parse', 'HEAD')).toBe(second)
+    expect(core.saveState).not.toHaveBeenCalled()
+  })
+
+  it('refuses files without a checkout', async () => {
     writeFileSync(join(workspace, 'pom.xml'), '')
 
     await expect(
-      checkoutCommit(workspace, {
+      prepareCheckout(workspace, {
         ...checkout,
         serverUrl: `file://${server}`,
         sha: first
       })
-    ).rejects.toThrow(/set checkout to false/)
+    ).rejects.toThrow(/holds files but no checkout/)
+  })
+
+  it('refuses a workspace that is only a directory in a repository further up', async () => {
+    git(root, 'init', '--quiet')
+    writeFileSync(join(workspace, 'pom.xml'), '')
+
+    await expect(
+      prepareCheckout(workspace, {
+        ...checkout,
+        serverUrl: `file://${server}`,
+        sha: first
+      })
+    ).rejects.toThrow(/holds files but no checkout/)
+  })
+})
+
+describe('cleanUpCheckout', () => {
+  beforeEach(() => {
+    process.env.GITHUB_WORKSPACE = workspace
+    git(root, 'clone', '--quiet', origin(), workspace)
+    mkdirSync(join(workspace, 'target', 'classes'), { recursive: true })
+    writeFileSync(join(workspace, 'target', 'classes', 'App.class'), '')
+  })
+
+  it('empties the workspace after its own checkout', () => {
+    core.getState.mockReturnValue('true')
+
+    cleanUpCheckout()
+
+    expect(existsSync(workspace)).toBe(true)
+    expect(readdirSync(workspace)).toEqual([])
+  })
+
+  it("leaves a checkout that isn't its own", () => {
+    core.getState.mockReturnValue('')
+
+    cleanUpCheckout()
+
+    expect(readdirSync(workspace).sort()).toEqual([
+      '.git',
+      'App.java',
+      'target'
+    ])
   })
 })
 
@@ -130,7 +221,7 @@ describe('verifyCheckout', () => {
 
   it('rejects a checkout of another commit', async () => {
     clone()
-    await expect(verifyCheckout(workspace, first)).rejects.toThrow(
+    await expect(verifyCheckout(workspace, first, origin())).rejects.toThrow(
       /check out that commit/
     )
   })
@@ -138,7 +229,7 @@ describe('verifyCheckout', () => {
   it('rejects a shallow checkout', async () => {
     clone('--depth=1')
     const head = git(workspace, 'rev-parse', 'HEAD')
-    await expect(verifyCheckout(workspace, head)).rejects.toThrow(
+    await expect(verifyCheckout(workspace, head, origin())).rejects.toThrow(
       /fetch-depth 0/
     )
   })
@@ -152,7 +243,7 @@ describe('verifyCheckout', () => {
       'AUTHORIZATION: basic secret'
     )
     const head = git(workspace, 'rev-parse', 'HEAD')
-    await expect(verifyCheckout(workspace, head)).rejects.toThrow(
+    await expect(verifyCheckout(workspace, head, origin())).rejects.toThrow(
       /persist-credentials false/
     )
   })
@@ -166,8 +257,73 @@ describe('verifyCheckout', () => {
     )
     git(workspace, 'config', 'include.path', included)
     const head = git(workspace, 'rev-parse', 'HEAD')
-    await expect(verifyCheckout(workspace, head)).rejects.toThrow(
+    await expect(verifyCheckout(workspace, head, origin())).rejects.toThrow(
       /persist-credentials false/
+    )
+  })
+
+  it('accepts the origin with .git or in another case', async () => {
+    clone()
+    git(
+      workspace,
+      'remote',
+      'set-url',
+      'origin',
+      `${origin().toUpperCase()}.git`
+    )
+    const head = git(workspace, 'rev-parse', 'HEAD')
+    await expect(
+      verifyCheckout(workspace, head, origin())
+    ).resolves.toBeUndefined()
+  })
+
+  it('rejects a checkout whose origin is another repository', async () => {
+    clone()
+    git(
+      workspace,
+      'remote',
+      'set-url',
+      'origin',
+      `file://${join(server, 'forker', 'repo')}`
+    )
+    const head = git(workspace, 'rev-parse', 'HEAD')
+    await expect(verifyCheckout(workspace, head, origin())).rejects.toThrow(
+      /origin is not/
+    )
+  })
+
+  it.each([
+    [
+      'an added file',
+      () => {
+        writeFileSync(join(workspace, 'extra.txt'), '')
+      },
+      'extra.txt'
+    ],
+    [
+      'an ignored file',
+      () => {
+        writeFileSync(
+          join(workspace, '.git', 'info', 'exclude'),
+          'ignored.txt\n'
+        )
+        writeFileSync(join(workspace, 'ignored.txt'), '')
+      },
+      'ignored.txt'
+    ],
+    [
+      'a changed file',
+      () => {
+        writeFileSync(join(workspace, 'App.java'), 'class Changed {}')
+      },
+      'App.java'
+    ]
+  ])('rejects %s', async (_name, change, file) => {
+    clone()
+    change()
+    const head = git(workspace, 'rev-parse', 'HEAD')
+    await expect(verifyCheckout(workspace, head, origin())).rejects.toThrow(
+      `such as ${file}`
     )
   })
 })

@@ -5,8 +5,7 @@ import * as core from '@actions/core'
 export const DEFAULTS: Record<string, string> = {
   mode: 'auto',
   'working-directory': '.',
-  'build-tool': 'auto',
-  checkout: 'true'
+  'build-tool': 'auto'
 }
 
 export type Inputs = {
@@ -20,18 +19,10 @@ export type Inputs = {
   hostUrl: string
   token: string
   githubToken: string
-  checkout: boolean
 }
 
 function input(name: string): string {
   return core.getInput(name) || DEFAULTS[name] || ''
-}
-
-function flag(name: string): boolean {
-  const value = input(name).toLowerCase()
-  if (value !== 'true' && value !== 'false')
-    throw new Error(`Input ${name} must be true or false, not '${value}'`)
-  return value === 'true'
 }
 
 // getMultilineInput drops empty lines before trimming, so whitespace-only lines would survive as
@@ -51,7 +42,6 @@ export function readInputs(): Inputs {
     organization: input('sonar-organization'),
     hostUrl: input('sonar-host-url'),
     token: input('sonar-token'),
-    githubToken: input('github-token'),
-    checkout: flag('checkout')
+    githubToken: input('github-token')
   }
 }

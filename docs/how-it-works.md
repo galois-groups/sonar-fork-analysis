@@ -109,12 +109,20 @@ analyzer per language.
 
 ### The checkout
 
-The action checks out the pull request itself, without ever writing the GitHub
-token to disk. `origin` points at your repository, because that's where Sonar
-looks for the base branch. The pull request's commit comes from your repository
-too. GitHub keeps a copy of every pull request's head there. The action never
-contacts the fork. Then it removes two kinds of files the scanner would
-otherwise trust:
+If the workspace is empty, the action checks out the pull request itself,
+without ever writing the GitHub token to disk. `origin` points at your
+repository, because that's where Sonar looks for the base branch. The pull
+request's commit comes from your repository too. GitHub keeps a copy of every
+pull request's head there. The action never contacts the fork. At the end of the
+job, the action deletes its checkout. A self-hosted runner then starts its next
+job with an empty workspace.
+
+If a step before the action already checked out, the action uses that checkout
+and leaves it in place. It checks that the checkout is at the analysed commit,
+with full history and no stored credentials. `origin` must be your repository,
+and the workspace must hold nothing the commit doesn't have.
+
+Then the action removes two kinds of files the scanner would otherwise trust:
 
 - Links that lead outside the checkout, because the scanner follows them. A link
   to `/proc/self` would get the scanner's own environment indexed and sent to

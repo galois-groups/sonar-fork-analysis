@@ -9,10 +9,12 @@ import * as http from "http";
 import * as https from "https";
 import * as events from "events";
 import { ok } from "assert";
+import { randomInt } from "node:crypto";
 import { StringDecoder } from "string_decoder";
 import * as child from "child_process";
 import { setTimeout as setTimeout$1 } from "timers";
-import { readFileSync as readFileSync$1 } from "node:fs";
+import { readFileSync as readFileSync$1, readdirSync, realpathSync, rmSync } from "node:fs";
+import { join, resolve as resolve$1 } from "node:path";
 //#region \0rolldown/runtime.js
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -17892,6 +17894,175 @@ function getState(name) {
 	return process.env[`STATE_${name}`] || "";
 }
 //#endregion
+//#region src/retry.ts
+var CHECKOUT_POLICY = {
+	attempts: 3,
+	minSeconds: 10,
+	maxSeconds: 20,
+	sleep: (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1e3))
+};
+async function retry(action, policy = CHECKOUT_POLICY) {
+	for (let attempt = 1; attempt < policy.attempts; attempt++) {
+		try {
+			return await action();
+		} catch (error) {
+			info(error instanceof Error ? error.message : String(error));
+		}
+		const seconds = randomInt(policy.minSeconds, policy.maxSeconds + 1);
+		info(`Waiting ${seconds} seconds before trying again`);
+		await policy.sleep(seconds);
+	}
+	return action();
+}
+//#endregion
+//#region src/environment.ts
+function jobEnvironment() {
+	return Object.fromEntries(Object.entries(process.env).filter((entry) => entry[1] !== void 0 && !entry[0].startsWith("INPUT_")));
+}
+var RUNNER_FILES = /* @__PURE__ */ new Set([
+	"GITHUB_ENV",
+	"GITHUB_OUTPUT",
+	"GITHUB_PATH",
+	"GITHUB_STATE",
+	"GITHUB_STEP_SUMMARY",
+	"GITHUB_TOKEN"
+]);
+function toolEnvironment() {
+	return Object.fromEntries(Object.entries(jobEnvironment()).filter(([name]) => !name.startsWith("ACTIONS_") && !RUNNER_FILES.has(name)));
+}
+//#endregion
+//#region src/checkout.ts
+var QUIET_GIT = {
+	GIT_TERMINAL_PROMPT: "0",
+	GIT_LFS_SKIP_SMUDGE: "1"
+};
+async function git(workspace, args, env = {}) {
+	return getExecOutput("git", args, {
+		cwd: workspace,
+		env: {
+			...toolEnvironment(),
+			...QUIET_GIT,
+			...env
+		},
+		ignoreReturnCode: true,
+		silent: true
+	});
+}
+async function required(workspace, args, env) {
+	const { exitCode, stdout, stderr } = await git(workspace, args, env);
+	if (exitCode !== 0) throw new Error(`git ${args[0] ?? ""} failed with exit code ${exitCode}: ${stderr.trim()}`);
+	return stdout.trim();
+}
+async function checkoutCommit(workspace, { serverUrl, repository, sha, token }) {
+	const env = {};
+	if (token) {
+		const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
+		setSecret(basic);
+		Object.assign(env, {
+			GIT_CONFIG_COUNT: "1",
+			GIT_CONFIG_KEY_0: `http.${serverUrl}/.extraheader`,
+			GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${basic}`
+		});
+	}
+	info(`Checking out ${sha}`);
+	await required(workspace, ["init", "--quiet"]);
+	await required(workspace, [
+		"remote",
+		"add",
+		"origin",
+		`${serverUrl}/${repository}`
+	]);
+	const fetch = [
+		"fetch",
+		"--quiet",
+		"--no-tags",
+		"--no-recurse-submodules"
+	];
+	await retry(() => required(workspace, [
+		...fetch,
+		"origin",
+		"+refs/heads/*:refs/remotes/origin/*"
+	], env));
+	await retry(() => required(workspace, [
+		...fetch,
+		"origin",
+		sha
+	], env));
+	await required(workspace, [
+		"checkout",
+		"--quiet",
+		"--detach",
+		sha
+	]);
+}
+var OWN_CHECKOUT = "own-checkout";
+async function prepareCheckout(workspace, checkout) {
+	if (readdirSync(workspace).length === 0) {
+		saveState(OWN_CHECKOUT, "true");
+		await checkoutCommit(workspace, checkout);
+		return;
+	}
+	const { exitCode, stdout } = await git(workspace, ["rev-parse", "--show-toplevel"]);
+	if (exitCode !== 0 || !sameDirectory(stdout.trim(), workspace)) throw new Error("The workspace holds files but no checkout: remove the step that writes them or check out the analysed commit there");
+	info("Analysing the checkout already in the workspace");
+}
+function sameDirectory(a, b) {
+	try {
+		return realpathSync(a) === realpathSync(b);
+	} catch {
+		return false;
+	}
+}
+function cleanUpCheckout() {
+	const workspace = process.env.GITHUB_WORKSPACE;
+	if (getState(OWN_CHECKOUT) !== "true" || !workspace) return;
+	try {
+		for (const entry of readdirSync(resolve$1(workspace))) rmSync(join(workspace, entry), {
+			recursive: true,
+			force: true,
+			maxRetries: 3
+		});
+	} catch (error) {
+		warning(`Could not clean up the workspace: ${error instanceof Error ? error.message : String(error)}`);
+	}
+}
+function sameRepository(url, expected) {
+	const normal = (value) => {
+		let result = value.toLowerCase();
+		while (result.endsWith("/")) result = result.slice(0, -1);
+		return result.endsWith(".git") ? result.slice(0, -4) : result;
+	};
+	return normal(url) === normal(expected);
+}
+async function verifyCheckout(workspace, sha, repositoryUrl) {
+	const head = await required(workspace, ["rev-parse", "HEAD"]);
+	if (head !== sha) throw new Error(`The checkout is at ${head} but the analysis is for ${sha}: check out that commit. On a self-hosted runner, an interrupted earlier run may have left its checkout: clean the workspace`);
+	if (await required(workspace, ["rev-parse", "--is-shallow-repository"]) === "true") throw new Error("The checkout is shallow, so Sonar would get no history: fetch it with fetch-depth 0");
+	const { stdout } = await git(workspace, [
+		"config",
+		"--local",
+		"--includes",
+		"--get-regexp",
+		String.raw`^http\..*\.extraheader$`
+	]);
+	if (stdout.trim() !== "") throw new Error("The checkout stored credentials in .git/config: check out with persist-credentials false");
+	const origin = await git(workspace, [
+		"remote",
+		"get-url",
+		"origin"
+	]);
+	if (origin.exitCode !== 0 || !sameRepository(origin.stdout.trim(), repositoryUrl)) throw new Error(`The checkout's origin is not ${repositoryUrl}, where Sonar looks for the base branch: check out from this repository`);
+	const status = await git(workspace, [
+		"status",
+		"--porcelain",
+		"--ignored",
+		"--untracked-files=all"
+	]);
+	if (status.exitCode !== 0) throw new Error(`git status failed with exit code ${status.exitCode}: ${status.stderr.trim()}`);
+	const first = status.stdout.split("\n").find((line) => line !== "");
+	if (first !== void 0) throw new Error(`The checkout holds files that aren't the analysed commit's, such as ${first.slice(3)}: remove the steps that write them`);
+}
+//#endregion
 //#region src/status.ts
 function statusReporter(target) {
 	let enabled = true;
@@ -17987,6 +18158,6 @@ function readNote(saved) {
 	}
 }
 //#endregion
-export { __toESM as A, require_undici as C, __exportAll as D, __esmMin as E, __require as O, HttpCodes as S, __commonJSMin as T, mkdirP as _, debug as a, BearerCredentialHandler as b, getMultilineInput as c, notice as d, setFailed as f, getExecOutput as g, exec as h, trackedReporter as i, __toCommonJS as k, info as l, warning as m, reportInterrupted as n, error as o, setSecret as p, runStatusTarget as r, getInput as s, noReporter as t, isDebug as u, rmRF as v, require_tunnel as w, HttpClient as x, which as y };
+export { __commonJSMin as A, rmRF as C, HttpCodes as D, HttpClient as E, __toESM as F, __exportAll as M, __require as N, require_undici as O, __toCommonJS as P, mkdirP as S, BearerCredentialHandler as T, notice as _, cleanUpCheckout as a, warning as b, jobEnvironment as c, debug as d, error as f, isDebug as g, info as h, trackedReporter as i, __esmMin as j, require_tunnel as k, toolEnvironment as l, getMultilineInput as m, reportInterrupted as n, prepareCheckout as o, getInput as p, runStatusTarget as r, verifyCheckout as s, noReporter as t, retry as u, setFailed as v, which as w, exec as x, setSecret as y };
 
 //# sourceMappingURL=shared.js.map

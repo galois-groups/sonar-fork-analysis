@@ -639,13 +639,17 @@ describe('run in analyze mode', () => {
       JSON.stringify({ repository: { default_branch: 'main' } })
     )
     process.env.GITHUB_EVENT_PATH = event
-    inputs.checkout = 'false'
     head = 'head-sha'
+    // The project stands in for a checkout the user made in the workspace.
     getExecOutput.mockImplementation(async (_tool, args) => {
-      if (args!.includes('--is-shallow-repository'))
-        return { exitCode: 0, stdout: 'false\n', stderr: '' }
+      const ok = (stdout: string) => ({ exitCode: 0, stdout, stderr: '' })
+      if (args!.includes('--show-toplevel')) return ok(`${project}\n`)
+      if (args!.includes('--is-shallow-repository')) return ok('false\n')
       if (args![0] === 'config') return { exitCode: 1, stdout: '', stderr: '' }
-      return { exitCode: 0, stdout: `${head}\n`, stderr: '' }
+      if (args!.includes('get-url'))
+        return ok(`https://github.com/${process.env.GITHUB_REPOSITORY ?? ''}\n`)
+      if (args![0] === 'status') return ok('')
+      return ok(`${head}\n`)
     })
     exec.mockResolvedValue(0)
   })

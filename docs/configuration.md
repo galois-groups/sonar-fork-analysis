@@ -16,7 +16,6 @@ recipes for common setups, supported runners and limitations.
 | `build-tool`         | No                    | `auto`             | `auto` picks Maven or Gradle when their build files are there. Otherwise it runs the scanner when there's a `sonar-project.properties`. `maven`, `gradle` or `scanner` forces one. See [setup](../README.md#2-add-the-action-to-your-build-workflow). |
 | `build-goals`        | No                    | `verify` / `check` | Maven goals or Gradle tasks to run. Not with `scanner`.                                                                                                                                                                                               |
 | `build-arguments`    | No                    |                    | Extra build flags. In the Sonar workflow they're passed to the scanner instead, for example `-Dsonar.projectName=App`. The scanner doesn't run in the checkout there, so use absolute paths.                                                          |
-| `checkout`           | No                    | `true`             | Whether the Sonar workflow checks out the analysed commit. Set it to `false` to check out yourself, see [your own checkout](#your-own-checkout).                                                                                                      |
 | `github-token`       | No                    | `github.token`     | Used to download the build's artifact, look up the pull request, check it out and post the status.                                                                                                                                                    |
 
 `build-goals` and `build-arguments` take one entry per line, so write several as
@@ -213,11 +212,17 @@ In the Sonar workflow, use the job condition from
 
 ### Your own checkout
 
-The action checks out the analysed commit itself. Set `checkout: false` to do it
-yourself, for example to get submodules or Git LFS files. Your checkout must be
-at the analysed commit, with full history and no persisted credentials. Its
-`origin` must point at your repository, because Sonar finds the base branch
-there.
+The action checks out the analysed commit itself when the workspace is empty. It
+deletes that checkout at the end of the job. To check out yourself, for example
+to get submodules or Git LFS files, add a checkout step before the action. The
+action then uses your checkout and leaves it in place. Your checkout must:
+
+- be at the analysed commit, with full history;
+- have no persisted credentials;
+- have `origin` pointing at your repository, because Sonar finds the base branch
+  there;
+- hold nothing else. A step that adds or changes files would have them analysed
+  as the pull request's code, so the action refuses them.
 
 ```yaml
 - uses: actions/checkout@v7
@@ -228,7 +233,6 @@ there.
     submodules: true
 - uses: galois-groups/sonar-fork-analysis@v2
   with:
-    checkout: false
     # …
 ```
 

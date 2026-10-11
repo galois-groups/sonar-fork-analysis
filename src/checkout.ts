@@ -1,6 +1,7 @@
 import * as core from '@actions/core'
 import { getExecOutput } from '@actions/exec'
-import { readdirSync } from 'node:fs'
+import { readdirSync, realpathSync, rmSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { toolEnvironment } from './environment.js'
 import { retry } from './retry.js'
 
@@ -48,11 +49,6 @@ export async function checkoutCommit(
   workspace: string,
   { serverUrl, repository, sha, token }: Checkout
 ): Promise<void> {
-  if (readdirSync(workspace).length > 0) {
-    throw new Error(
-      'The workspace is not empty: remove your checkout step, or set checkout to false to keep it'
-    )
-  }
   const env: Record<string, string> = {}
   if (token) {
     const basic = Buffer.from(`x-access-token:${token}`).toString('base64')
@@ -88,14 +84,79 @@ export async function checkoutCommit(
   await required(workspace, ['checkout', '--quiet', '--detach', sha])
 }
 
+const OWN_CHECKOUT = 'own-checkout'
+
+// The workspace decides. Empty, the action checks out itself and cleans up after the job. A checkout
+// there is the user's: the action only verifies it and leaves it alone.
+export async function prepareCheckout(
+  workspace: string,
+  checkout: Checkout
+): Promise<void> {
+  if (readdirSync(workspace).length === 0) {
+    // Saved first, so the post step also cleans up after a checkout that failed half-way.
+    core.saveState(OWN_CHECKOUT, 'true')
+    await checkoutCommit(workspace, checkout)
+    return
+  }
+  const { exitCode, stdout } = await git(workspace, [
+    'rev-parse',
+    '--show-toplevel'
+  ])
+  // A repository further up would pass for one, with the workspace as just a directory in it.
+  if (exitCode !== 0 || !sameDirectory(stdout.trim(), workspace)) {
+    throw new Error(
+      'The workspace holds files but no checkout: remove the step that writes them or check out the analysed commit there'
+    )
+  }
+  core.info('Analysing the checkout already in the workspace')
+}
+
+function sameDirectory(a: string, b: string): boolean {
+  try {
+    return realpathSync(a) === realpathSync(b)
+  } catch {
+    return false
+  }
+}
+
+// The post step. An own checkout holds the pull request's code, and a self-hosted runner keeps the
+// workspace for its next job, which needs it empty.
+export function cleanUpCheckout(): void {
+  const workspace = process.env.GITHUB_WORKSPACE
+  if (core.getState(OWN_CHECKOUT) !== 'true' || !workspace) return
+  try {
+    for (const entry of readdirSync(resolve(workspace)))
+      rmSync(join(workspace, entry), {
+        recursive: true,
+        force: true,
+        maxRetries: 3
+      })
+  } catch (error) {
+    core.warning(
+      `Could not clean up the workspace: ${error instanceof Error ? error.message : String(error)}`
+    )
+  }
+}
+
+// GitHub accepts a repository's URL with or without .git, and in any case.
+function sameRepository(url: string, expected: string): boolean {
+  const normal = (value: string) => {
+    let result = value.toLowerCase()
+    while (result.endsWith('/')) result = result.slice(0, -1)
+    return result.endsWith('.git') ? result.slice(0, -4) : result
+  }
+  return normal(url) === normal(expected)
+}
+
 export async function verifyCheckout(
   workspace: string,
-  sha: string
+  sha: string,
+  repositoryUrl: string
 ): Promise<void> {
   const head = await required(workspace, ['rev-parse', 'HEAD'])
   if (head !== sha) {
     throw new Error(
-      `The checkout is at ${head} but the analysis is for ${sha}: check out that commit`
+      `The checkout is at ${head} but the analysis is for ${sha}: check out that commit. On a self-hosted runner, an interrupted earlier run may have left its checkout: clean the workspace`
     )
   }
   if (
@@ -118,6 +179,35 @@ export async function verifyCheckout(
   if (stdout.trim() !== '') {
     throw new Error(
       'The checkout stored credentials in .git/config: check out with persist-credentials false'
+    )
+  }
+  // Sonar finds the base branch on origin. A fork's copy of it could be anything.
+  const origin = await git(workspace, ['remote', 'get-url', 'origin'])
+  if (
+    origin.exitCode !== 0 ||
+    !sameRepository(origin.stdout.trim(), repositoryUrl)
+  ) {
+    throw new Error(
+      `The checkout's origin is not ${repositoryUrl}, where Sonar looks for the base branch: check out from this repository`
+    )
+  }
+  // Anything a step added or changed would be analysed as the pull request's code.
+  const status = await git(workspace, [
+    'status',
+    '--porcelain',
+    '--ignored',
+    '--untracked-files=all'
+  ])
+  if (status.exitCode !== 0) {
+    throw new Error(
+      `git status failed with exit code ${status.exitCode}: ${status.stderr.trim()}`
+    )
+  }
+  // Each line is two status letters, a space and the path.
+  const first = status.stdout.split('\n').find((line) => line !== '')
+  if (first !== undefined) {
+    throw new Error(
+      `The checkout holds files that aren't the analysed commit's, such as ${first.slice(3)}: remove the steps that write them`
     )
   }
 }

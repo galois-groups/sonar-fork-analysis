@@ -90,7 +90,6 @@ If you want the two to always match, check out the head in the build:
 ```yaml
 - uses: actions/checkout@v7
   with:
-    persist-credentials: false
     fetch-depth: 0
     ref: ${{ github.event.pull_request.head.sha }}
 ```

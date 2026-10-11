@@ -25,10 +25,11 @@ libraries, coverage, test reports and the settings your build defines all carry
 over. Your own pushes and pull requests have the token, so the build analyses
 them directly.
 
-If you don't need coverage on pull requests from forks, SonarQube Cloud's
+SonarQube Cloud's
 [Automatic Analysis](https://docs.sonarsource.com/sonarqube-cloud/advanced-setup/automatic-analysis/)
-handles them with no setup. But it doesn't support monorepos and analyses some
-languages in less depth.
+also handles pull requests from forks, with no setup. It gives no coverage,
+doesn't support monorepos and analyses some languages in less depth. If those
+limits don't matter to you, it's the simpler choice.
 
 Coming from v1? It no longer gets fixes, not even security fixes. See
 [migrating from v1](docs/migrating-from-v1.md).
@@ -71,8 +72,9 @@ them on. See
 > Both analyses must find the same issues, coverage and tests. The sample
 > projects hold every language the fork path analyses.
 >
-> Untested means we don't guarantee that the token stays safe on pull requests
-> from forks. Use it at your own risk. That includes languages you turn on yourself.
+> Untested means the action doesn't guarantee that the token stays safe on pull
+> requests from forks. Use it at your own risk. That includes languages you turn
+> on yourself.
 
 The action is tested on GitHub's Linux runners. The build workflow is also
 tested on Windows and macOS. See
@@ -91,9 +93,9 @@ test:
   manifests, Helm charts and more;
 - Dockerfiles and Containerfiles.
 
-Files in other languages get no issues on pull requests from forks. For example,
-a Maven project's Python files get none. So these pull requests may show fewer
-issues than your own. You can
+Files in other languages get no issues from their own analyzer on pull requests
+from forks. For example, a Maven project's Python files get none. So these pull
+requests may show fewer issues than your own. You can
 [turn a language on](docs/configuration.md#languages-on-pull-requests-from-forks)
 at your own risk. [How it works](docs/how-it-works.md#the-analyzers) explains
 why the others stay off.
@@ -111,40 +113,29 @@ why the others stay off.
    pom pins in `<plugins>` or `<pluginManagement>`. That version must be 3.2 or
    later. If your pom pins none, the action runs the latest. Dependabot can keep
    either up to date.
-3. Add the action to your build workflow:
+3. In your build workflow, put the action in place of your build step:
 
    ```yaml
-   name: Build
-   on:
-     push:
-       branches: [main]
-     pull_request:
-   permissions:
-     contents: read
-   jobs:
-     build:
-       runs-on: ubuntu-latest
-       steps:
-         # Your existing checkout and Java setup. Sonar needs the full history.
-         - uses: actions/checkout@v7
-           with:
-             persist-credentials: false
-             fetch-depth: 0
-         - uses: actions/setup-java@v6
-           with:
-             distribution: temurin
-             java-version: 21
-         # Add this in place of your build step.
-         - uses: galois-groups/sonar-fork-analysis@v2
-           with:
-             project-key: my-org_my-project
-             sonar-organization: my-org
-             sonar-token: ${{ secrets.SONAR_TOKEN }}
+   steps:
+     # Your existing checkout and Java setup. Sonar needs the full history.
+     - uses: actions/checkout@v7
+       with:
+         fetch-depth: 0
+     - uses: actions/setup-java@v6
+       with:
+         distribution: temurin
+         java-version: 21
+     # Add this in place of your build step.
+     - uses: galois-groups/sonar-fork-analysis@v2
+       with:
+         project-key: my-org_my-project
+         sonar-organization: my-org
+         sonar-token: ${{ secrets.SONAR_TOKEN }}
    ```
 
    The action runs the build itself: `verify` for Maven and `check` for Gradle.
-   [`build-goals`](docs/configuration.md#inputs) changes that. Trigger the
-   workflow on `pull_request`, not `pull_request_target`. With
+   [`build-goals`](docs/configuration.md#inputs) changes that. Your build
+   workflow must run on `pull_request`, not `pull_request_target`. With
    `pull_request_target`, a fork's code would run with your secrets, so the
    action refuses to build there.
 
@@ -173,9 +164,10 @@ why the others stay off.
              sonar-token: ${{ secrets.SONAR_TOKEN }}
    ```
 
-   Use the same `project-key` in both workflows, because it also names the
-   artifact. `statuses: write` is optional: it lets the action post a status on
-   the pull request.
+   Put your build workflow's name in `workflows`, here `Build`. Use the same
+   `project-key` in both workflows because it also names the artifact.
+   `statuses: write` is optional: it lets the action post a status on the pull
+   request.
 
 5. To block merging until the analysis passes, require Sonar's own check. See
    [required checks](docs/configuration.md#commit-statuses-and-required-checks).
@@ -196,7 +188,6 @@ steps:
   # Your existing checkout and Node setup. Sonar needs the full history.
   - uses: actions/checkout@v7
     with:
-      persist-credentials: false
       fetch-depth: 0
   - uses: actions/setup-node@v7
     with:

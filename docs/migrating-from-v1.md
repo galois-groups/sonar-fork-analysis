@@ -32,7 +32,6 @@ After:
 steps:
   - uses: actions/checkout@v7
     with:
-      persist-credentials: false
       fetch-depth: 0
   - uses: actions/setup-java@v6
     with:

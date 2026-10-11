@@ -432,7 +432,7 @@ async function analyzeCommit(
 ): Promise<{ analysed: true } | { gone: number }> {
   const name = artifactName(inputs.projectKey)
   const serverUrl = process.env.GITHUB_SERVER_URL ?? 'https://github.com'
-  await prepareCheckout(workspace, {
+  const adopted = await prepareCheckout(workspace, {
     serverUrl,
     repository: context.repository,
     sha: origin.headSha,
@@ -441,7 +441,8 @@ async function analyzeCommit(
   await verifyCheckout(
     workspace,
     origin.headSha,
-    `${serverUrl}/${context.repository}`
+    `${serverUrl}/${context.repository}`,
+    adopted
   )
   const temp = tempDirectory()
   // /proc/self/cwd leads to the working directory of whichever process reads it: the checkout for the

@@ -76727,13 +76727,13 @@ async function analyzeRun(inputs, context, workspace, report) {
 async function analyzeCommit(inputs, context, origin, workspace, found) {
 	const name = artifactName(inputs.projectKey);
 	const serverUrl = process.env.GITHUB_SERVER_URL ?? "https://github.com";
-	await prepareCheckout(workspace, {
+	const adopted = await prepareCheckout(workspace, {
 		serverUrl,
 		repository: context.repository,
 		sha: origin.headSha,
 		token: inputs.githubToken
 	});
-	await verifyCheckout(workspace, origin.headSha, `${serverUrl}/${context.repository}`);
+	await verifyCheckout(workspace, origin.headSha, `${serverUrl}/${context.repository}`, adopted);
 	const temp = tempDirectory();
 	process.chdir(temp);
 	const removedLinks = removeOutwardLinks(workspace);

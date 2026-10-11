@@ -641,6 +641,7 @@ describe('run in analyze mode', () => {
     process.env.GITHUB_EVENT_PATH = event
     head = 'head-sha'
     // The project stands in for a checkout the user made in the workspace.
+    mkdirSync(join(project, '.git'), { recursive: true })
     getExecOutput.mockImplementation(async (_tool, args) => {
       const ok = (stdout: string) => ({ exitCode: 0, stdout, stderr: '' })
       if (args!.includes('--show-toplevel')) return ok(`${project}\n`)

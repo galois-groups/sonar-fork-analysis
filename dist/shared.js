@@ -13,7 +13,7 @@ import { randomInt } from "node:crypto";
 import { StringDecoder } from "string_decoder";
 import * as child from "child_process";
 import { setTimeout as setTimeout$1 } from "timers";
-import { lstatSync, readFileSync as readFileSync$1, readdirSync, realpathSync, rmSync } from "node:fs";
+import { existsSync as existsSync$1, lstatSync, readFileSync as readFileSync$1, readdirSync, realpathSync, rmSync } from "node:fs";
 import { dirname, join, relative, resolve as resolve$1 } from "node:path";
 //#region \0rolldown/runtime.js
 var __create = Object.create;
@@ -18015,15 +18015,20 @@ async function checkoutCommit(workspace, { serverUrl, repository, sha, token }) 
 	]);
 }
 var OWN_CHECKOUT = "own-checkout";
+var SHARED_WORKSPACE = "On a self-hosted runner, another job may have left its files in the workspace: empty it before the action";
 async function prepareCheckout(workspace, checkout) {
 	if (readdirSync(workspace).length === 0) {
 		saveState(OWN_CHECKOUT, "true");
 		await checkoutCommit(workspace, checkout);
-		return;
+		return false;
 	}
-	const { exitCode, stdout } = await git(workspace, ["rev-parse", "--show-toplevel"]);
-	if (exitCode !== 0 || !sameDirectory(stdout.trim(), workspace)) throw new Error("The workspace holds files but no checkout: remove the step that writes them or check out the analysed commit there");
+	const noCheckout = /* @__PURE__ */ new Error(`The workspace holds files but no checkout: remove the step that writes them or check out the analysed commit there. ${SHARED_WORKSPACE}`);
+	if (!existsSync$1(join(workspace, ".git"))) throw noCheckout;
+	const { exitCode, stdout, stderr } = await git(workspace, ["rev-parse", "--show-toplevel"]);
+	if (exitCode !== 0) throw new Error(`Could not tell whether the workspace holds a checkout: ${stderr.trim()}`);
+	if (!sameDirectory(stdout.trim(), workspace)) throw noCheckout;
 	info("Analysing the checkout already in the workspace");
+	return true;
 }
 function sameDirectory(a, b) {
 	try {
@@ -18035,27 +18040,54 @@ function sameDirectory(a, b) {
 function cleanUpCheckout() {
 	const workspace = process.env.GITHUB_WORKSPACE;
 	if (getState(OWN_CHECKOUT) !== "true" || !workspace) return;
+	let entries;
 	try {
-		for (const entry of readdirSync(resolve$1(workspace))) rmSync(join(workspace, entry), {
+		entries = readdirSync(resolve$1(workspace));
+	} catch (error) {
+		cleanUpFailed(error);
+		return;
+	}
+	for (const entry of entries) try {
+		rmSync(join(workspace, entry), {
 			recursive: true,
 			force: true,
 			maxRetries: 3
 		});
 	} catch (error) {
-		warning(`Could not clean up the workspace: ${error instanceof Error ? error.message : String(error)}`);
+		cleanUpFailed(error);
 	}
 }
-function sameRepository(url, expected) {
-	const normal = (value) => {
-		let result = value.toLowerCase();
-		while (result.endsWith("/")) result = result.slice(0, -1);
-		return result.endsWith(".git") ? result.slice(0, -4) : result;
-	};
-	return normal(url) === normal(expected);
+function cleanUpFailed(error) {
+	warning(`Could not clean up the workspace: ${error instanceof Error ? error.message : String(error)}`);
 }
-async function verifyCheckout(workspace, sha, repositoryUrl) {
+function repositoryLocation(url) {
+	let rest = url.trim().toLowerCase();
+	const scheme = rest.indexOf("://");
+	if (scheme > 0) rest = rest.slice(scheme + 3);
+	else {
+		const colon = rest.indexOf(":");
+		if (colon > 0 && !rest.slice(0, colon).includes("/")) rest = `${rest.slice(0, colon)}/${rest.slice(colon + 1)}`;
+	}
+	const slash = rest.indexOf("/");
+	let host = slash < 0 ? rest : rest.slice(0, slash);
+	const path = slash < 0 ? "" : rest.slice(slash);
+	host = host.slice(host.lastIndexOf("@") + 1);
+	const port = host.lastIndexOf(":");
+	if (port >= 0 && /^\d+$/.test(host.slice(port + 1))) host = host.slice(0, port);
+	let location = host + path;
+	while (location.endsWith("/")) location = location.slice(0, -1);
+	return location.endsWith(".git") ? location.slice(0, -4) : location;
+}
+function holdsCredentials(url) {
+	const scheme = url.indexOf("://");
+	if (scheme < 0 || !/^https?$/i.test(url.slice(0, scheme))) return false;
+	const rest = url.slice(scheme + 3);
+	const slash = rest.indexOf("/");
+	return (slash < 0 ? rest : rest.slice(0, slash)).includes("@");
+}
+async function verifyCheckout(workspace, sha, repositoryUrl, adopted) {
 	const head = await required(workspace, ["rev-parse", "HEAD"]);
-	if (head !== sha) throw new Error(`The checkout is at ${head} but the analysis is for ${sha}: check out that commit. On a self-hosted runner, an interrupted earlier run may have left its checkout: clean the workspace`);
+	if (head !== sha) throw new Error(`The checkout is at ${head} but the analysis is for ${sha}: check out that commit. ${SHARED_WORKSPACE}`);
 	if (await required(workspace, ["rev-parse", "--is-shallow-repository"]) === "true") throw new Error("The checkout is shallow, so Sonar would get no history: fetch it with fetch-depth 0");
 	const { stdout } = await git(workspace, [
 		"config",
@@ -18065,21 +18097,27 @@ async function verifyCheckout(workspace, sha, repositoryUrl) {
 		String.raw`^http\..*\.extraheader$`
 	]);
 	if (stdout.trim() !== "") throw new Error("The checkout stored credentials in .git/config: check out with persist-credentials false");
+	if (adopted) await verifyAdopted(workspace, repositoryUrl);
+}
+async function verifyAdopted(workspace, repositoryUrl) {
 	const origin = await git(workspace, [
 		"remote",
 		"get-url",
 		"origin"
 	]);
-	if (origin.exitCode !== 0 || !sameRepository(origin.stdout.trim(), repositoryUrl)) throw new Error(`The checkout's origin is not ${repositoryUrl}, where Sonar looks for the base branch: check out from this repository`);
+	const url = origin.stdout.trim();
+	if (holdsCredentials(url)) throw new Error("The checkout's origin holds credentials: check out without them in the URL");
+	if (origin.exitCode !== 0 || repositoryLocation(url) !== repositoryLocation(repositoryUrl)) throw new Error(`The checkout's origin is not ${repositoryUrl}, where Sonar looks for the base branch: check out from this repository`);
 	const status = await git(workspace, [
 		"status",
 		"--porcelain",
 		"--ignored",
-		"--untracked-files=all"
+		"--untracked-files=all",
+		"--ignore-submodules=none"
 	]);
 	if (status.exitCode !== 0) throw new Error(`git status failed with exit code ${status.exitCode}: ${status.stderr.trim()}`);
 	const first = status.stdout.split("\n").find((line) => line !== "");
-	if (first !== void 0) throw new Error(`The checkout holds files that aren't the analysed commit's, such as ${first.slice(3)}: remove the steps that write them`);
+	if (first !== void 0) throw new Error(`The checkout holds files that aren't the analysed commit's, such as ${first.slice(3)}: remove the steps that write them. ${SHARED_WORKSPACE}`);
 }
 //#endregion
 //#region src/status.ts

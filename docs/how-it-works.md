@@ -114,8 +114,8 @@ without ever writing the GitHub token to disk. `origin` points at your
 repository, because that's where Sonar looks for the base branch. The pull
 request's commit comes from your repository too. GitHub keeps a copy of every
 pull request's head there. The action never contacts the fork. At the end of the
-job, the action deletes its checkout. A self-hosted runner then starts its next
-job with an empty workspace.
+job, the action deletes its checkout, so the pull request's code doesn't stay on
+a self-hosted runner.
 
 If a step before the action already checked out, the action uses that checkout
 and leaves it in place. It checks that the checkout is at the analysed commit,

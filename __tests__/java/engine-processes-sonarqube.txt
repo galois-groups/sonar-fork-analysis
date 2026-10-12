@@ -1,5 +1,5 @@
 # Engine classes that can start a process, as listed by ScannerProbe processes, with why each is
-# safe on the fork path. Last reviewed on sonar-scanner-engine-community-13.7.0.4455 (SonarQube 26.9).
+# safe on the fork path. Last reviewed on sonar-scanner-engine-community-13.15.0.6376 (SonarQube 26.10).
 # Unmarked entries are libraries bundled in the engine; JGit runs hooks and filters only from the
 # .git the action creates. SVNKit and the SSH libraries serve the SVN provider, which never runs on
 # the fork path: the action's .git makes git claim the project, and sonar.scm.provider is denied.
@@ -49,6 +49,7 @@ org/eclipse/jgit/util/FS_Win32
 org/eclipse/jgit/util/FS_Win32_Cygwin
 org/eclipse/jgit/util/SshSupport
 org/sonar/api/utils/command/CommandExecutor  # the plugin API for running commands; plugins are outside this check
+org/sonar/scanner/buildsystem/maven/MavenBuildSystemModelReader  # build system autoconfiguration runs the checkout's mvnw: off, sonar.scanner.autoconfig.enabled=false
 org/sonar/scanner/process/executor/ProcessWrapperFactory  # the engine's process helper itself
 org/sonar/scanner/process/executor/ProcessWrapperImpl  # the engine's process helper itself
 org/sonar/scm/git/GitScmSupport  # runs git; the .git it reads is created by the action

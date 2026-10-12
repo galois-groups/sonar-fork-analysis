@@ -671,7 +671,7 @@ export function trustedProperties(
     ['sonar.sca.enabled', 'false'],
     // So does the engine's build system autoconfiguration, which runs the checkout's mvnw; this turns
     // off all of it, including the readers deriving the project's layout from its build files
-    // (SonarCloud engine 13.14, behind server-side feature flags).
+    // (SonarCloud engine 13.14, behind server-side feature flags; SonarQube's from 13.15).
     ['sonar.scanner.autoconfig.enabled', 'false']
   ])
   // Files of untested languages get no language, so the engine never loads those analyzers.

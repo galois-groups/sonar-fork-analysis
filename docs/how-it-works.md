@@ -297,8 +297,9 @@ Each fake fails the run if anything starts it. The sample projects add traps of
 their own: Gradle settings, Node configuration files and Node packages. These
 fail the run if the analysis ever loads them.
 
-One sample project also holds a Python file with a known issue. It checks that
-untested languages stay off on the fork path. The direct analysis must report
-the issue, but the fork path must not analyse the file.
+Two sample projects also hold a file of an untested language: a Python file and
+a shell script. Each has a known issue. They check that untested languages stay
+off on the fork path. The direct analysis must report the issue, but the fork
+path must not analyse the file.
 
 Older SonarQube Server versions and commercial editions aren't tested.

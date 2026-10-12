@@ -20,7 +20,6 @@ export const TESTED_LANGUAGES = [
   'ansible',
   'azurepipelines',
   'azureresourcemanager',
-  'shell',
   'terraform',
   'text',
   'secrets'

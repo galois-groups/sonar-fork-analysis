@@ -92,7 +92,7 @@ test:
   manifests, Helm charts, CloudFormation templates, Ansible playbooks, Azure
   Pipelines, ARM templates and more;
 - Dockerfiles and Containerfiles;
-- shell scripts, Terraform and Bicep.
+- Terraform and Bicep.
 
 Files in other languages get no issues from their own analyzer on pull requests
 from forks. For example, a Maven project's Python files get none. So these pull

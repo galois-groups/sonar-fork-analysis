@@ -73747,7 +73747,6 @@ var TESTED_LANGUAGES = [
 	"ansible",
 	"azurepipelines",
 	"azureresourcemanager",
-	"shell",
 	"terraform",
 	"text",
 	"secrets"

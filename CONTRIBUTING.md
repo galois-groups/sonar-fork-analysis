@@ -22,6 +22,10 @@ the scanner and SonarQube's engines. They need Java and `unzip`. If Sonar ships
 an engine that starts processes in new places, they fail until someone reviews
 `__tests__/java/engine-processes-*.txt`.
 
+The fixtures' fork-path analyses also record every program the scanner starts.
+If Sonar adds a helper program, the check fails and shows its command line.
+Review it, then add its path to `.github/fork-path-programs.txt`.
+
 The action pins the scanner CLI by hash. When the weekly run of Scanner and
 engines reports a newer one, run `npm run scanner:update`. It pins the new
 scanner with the digests Sonar publishes. Then run `npm run bundle` and open a

@@ -203,8 +203,8 @@ The analyzers of the tested languages only read the project's files. They never
 run them. The sample projects check this on every change, against SonarQube
 Cloud's analyzers. Their analyses run among traps: fake programs and
 booby-trapped project files. A trap fails the run if an analyzer starts one of
-those programs or loads one of those files. See
-[how it's tested](#how-its-tested).
+those programs or loads one of those files. Any program an analysis starts must
+also be on a list of known ones. See [how it's tested](#how-its-tested).
 
 The JavaScript analyzer got a closer look, because JavaScript projects hold a
 lot of configuration that is code. A project that tried every way to get its own
@@ -213,10 +213,9 @@ none of the project's configuration files (ESLint, Babel, TypeScript and others)
 and loaded no code from its `node_modules`. It only read `tsconfig` files and
 type declarations as data.
 
-Sonar analyses shell scripts, PowerShell and Mule applications with its
-Deterministic Rule Engine. That analyzer starts a native program of Sonar's own
-and sends it the code to check. Like the JavaScript analyzer's Node.js, it runs
-among the traps on every change.
+Sonar starts programs of its own to analyse some languages. One handles shell
+scripts, PowerShell and Mule applications. Another handles Helm charts. Like the
+JavaScript analyzer's Node.js, they run among the traps on every change.
 
 Analyzers of other languages haven't been checked. Some might start other
 programs. If you turn their language on with `build-arguments`, the action
@@ -301,6 +300,13 @@ these programs on the `PATH`:
 Each fake fails the run if anything starts it. The sample projects add traps of
 their own: Gradle settings, Node configuration files and Node packages. These
 fail the run if the analysis ever loads them.
+
+The fakes only catch programs known by name, so the Linux kernel also records
+every program the scanner starts, at any depth. A separate job without the token
+compares them with the programs the scanner, the engine and the analyzers are
+known to start. Any other program fails the run. A container started anywhere on
+the machine during the analysis fails it too. The record only shows which
+programs start, not what a program does once it runs.
 
 One sample project also holds a Python file with a known issue. It checks that
 untested languages stay off on the fork path. The direct analysis must report

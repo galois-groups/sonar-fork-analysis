@@ -196,9 +196,8 @@ against the engines of SonarQube Cloud and SonarQube. See
 
 Sonar's plugin for infrastructure as code (`iac`) always loads. It finds some
 YAML and JSON files by their content: CloudFormation templates, Ansible
-playbooks, Azure Pipelines files and ARM templates. Turning their languages off
-wouldn't stop that, so they are tested languages too: the sample projects hold
-one of each.
+playbooks, Azure Pipelines files and ARM templates. The sample projects hold one
+of each, so these are tested languages like the others.
 
 The analyzers of the tested languages only read files. The sample projects check
 this on every change, against SonarQube Cloud's analyzers. Their analyses run

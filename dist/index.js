@@ -73753,7 +73753,7 @@ var TESTED_LANGUAGES = [
 	"text",
 	"secrets"
 ];
-var NO_FILE = "file:/dev/null/never";
+var NO_FILE = ".git//sonar-fork-analysis/never";
 function definitions(buildArguments) {
 	const defined = [];
 	let separate = false;

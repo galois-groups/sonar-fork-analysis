@@ -367,9 +367,12 @@ describeScanner.each([
       'src/x.py',
       'test/evil.rs',
       'never',
+      'never/never',
+      'sonar-fork-analysis/never',
+      '.git/sonar-fork-analysis/never',
+      '.GIT/SONAR-FORK-ANALYSIS/NEVER',
+      'a/.git/sonar-fork-analysis/never',
       'dev/null/never',
-      'DEV/NULL/NEVER',
-      'a/b/dev/null/never',
       'file:/dev/null/never'
     ]
     const results = probe.matches([

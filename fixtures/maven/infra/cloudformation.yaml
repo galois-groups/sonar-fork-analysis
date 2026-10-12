@@ -1,0 +1,5 @@
+AWSTemplateFormatVersion: '2010-09-09'
+# TODO: add the queue for release notifications.
+Resources:
+  Placeholder:
+    Type: AWS::CloudFormation::WaitConditionHandle

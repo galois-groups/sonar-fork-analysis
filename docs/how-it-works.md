@@ -285,6 +285,9 @@ these programs on the `PATH`:
 - the build tools of Maven, Gradle, Node, Python, Go, Rust and Scala;
 - Java, `wget` and `curl`, which the Maven and Gradle wrappers need;
 - `docker`, `podman`, `kubectl` and `helm`;
+- the tools of Terraform, Ansible, AWS, Azure and shell scripts: `terraform`,
+  `tofu`, `ansible`, `ansible-playbook`, `ansible-lint`, `cfn-lint`, `aws`,
+  `az`, `bicep` and `shellcheck`;
 - `dotnet`, except in the scanner's own directory. SonarQube Cloud's engine runs
   it there to collect analytics.
 

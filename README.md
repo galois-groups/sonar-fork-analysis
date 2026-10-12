@@ -90,7 +90,8 @@ test:
 - CSS, SCSS and HTML;
 - XML, YAML and JSON: Maven POMs, GitHub Actions workflows, Kubernetes
   manifests, Helm charts and more;
-- Dockerfiles and Containerfiles.
+- Dockerfiles and Containerfiles;
+- shell scripts and Terraform.
 
 Files in other languages get no issues from their own analyzer on pull requests
 from forks. For example, a Maven project's Python files get none. So these pull

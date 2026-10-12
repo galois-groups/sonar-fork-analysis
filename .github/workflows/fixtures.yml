@@ -210,7 +210,7 @@ jobs:
         # The PATH entry is the directory created here, holding nothing but the stand-ins.
         run: | # zizmor: ignore[github-env]
           mkdir -p "$RUNNER_TEMP/traps"
-          for tool in mvn gradle npm npx yarn pnpm cargo go python python3 pip pip3 poetry uv sbt java javac wget curl docker podman kubectl helm; do
+          for tool in mvn gradle npm npx yarn pnpm cargo go python python3 pip pip3 poetry uv sbt java javac wget curl docker podman kubectl helm terraform tofu ansible ansible-playbook ansible-lint cfn-lint aws az bicep shellcheck; do
             printf "#!/bin/sh\necho \"\$0 \$*\" >> \"%s\"\nexit 1\n" "$RUNNER_TEMP/traps/sprung" > "$RUNNER_TEMP/traps/$tool"
             chmod +x "$RUNNER_TEMP/traps/$tool"
           done
@@ -366,4 +366,4 @@ jobs:
           # The fork path only analyses the languages the action is tested with.
           DIRECT_ONLY:
             ${{ matrix.fixture == 'npm' && 'packages/app/src/decoy.py' || '' }}
-          LANGUAGES: java,kotlin,js,ts,css,web,xml,yaml,json,docker
+          LANGUAGES: java,kotlin,js,ts,css,web,xml,yaml,json,docker,shell,terraform

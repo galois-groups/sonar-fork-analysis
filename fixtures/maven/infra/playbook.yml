@@ -1,0 +1,7 @@
+# TODO: install the service from the release archive.
+- name: Deploy fizzbuzz
+  hosts: all
+  tasks:
+    - name: Print the version
+      ansible.builtin.debug:
+        msg: Deploying fizzbuzz

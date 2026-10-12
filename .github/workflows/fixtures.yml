@@ -365,5 +365,6 @@ jobs:
           COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
           # The fork path only analyses the languages the action is tested with.
           DIRECT_ONLY:
-            ${{ matrix.fixture == 'npm' && 'packages/app/src/decoy.py' || '' }}
-          LANGUAGES: java,kotlin,js,ts,css,web,xml,yaml,json,docker,shell,terraform,azureresourcemanager
+            ${{ matrix.fixture == 'npm' && 'packages/app/src/decoy.py' ||
+            matrix.fixture == 'maven' && 'scripts/release.sh' || '' }}
+          LANGUAGES: java,kotlin,js,ts,css,web,xml,yaml,json,docker,terraform,azureresourcemanager

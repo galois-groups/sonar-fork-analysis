@@ -189,6 +189,10 @@ function repositoryLocation(url: string): string {
   return location.endsWith('.git') ? location.slice(0, -4) : location
 }
 
+export function sameRepository(url: string, expected: string): boolean {
+  return repositoryLocation(url) === repositoryLocation(expected)
+}
+
 // A user and password before the host: git keeps them in .git/config, next to the analysed code.
 function holdsCredentials(url: string): boolean {
   const scheme = url.indexOf('://')
@@ -249,10 +253,7 @@ async function verifyAdopted(
       "The checkout's origin holds credentials: check out without them in the URL"
     )
   }
-  if (
-    origin.exitCode !== 0 ||
-    repositoryLocation(url) !== repositoryLocation(repositoryUrl)
-  ) {
+  if (origin.exitCode !== 0 || !sameRepository(url, repositoryUrl)) {
     throw new Error(
       `The checkout's origin is not ${repositoryUrl}, where Sonar looks for the base branch: check out from this repository`
     )

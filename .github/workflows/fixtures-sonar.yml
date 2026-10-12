@@ -1,7 +1,7 @@
 # Analyses the fixtures prepared by the 'Fixtures' workflow, the way a pull request from a fork is.
 #
-# This job holds the Sonar token, so it must never run code from the analysed commit: the action comes
-# from main, and it checks out the analysed commit itself, which the scanner then only reads.
+# The analysis holds the Sonar token, so it must never run code from the analysed commit: see
+# fork-path.yml.
 name: 'Fixtures Sonar'
 # The fork path needs this trigger, and nothing here runs the analysed code (see above).
 on: # zizmor: ignore[dangerous-triggers]
@@ -12,155 +12,15 @@ on: # zizmor: ignore[dangerous-triggers]
 permissions: {}
 jobs:
   analyze:
-    name: 'Analyse ${{ matrix.fixture }} on the fork path'
+    name: 'Fork path'
     if: github.event.workflow_run.conclusion == 'success'
-    runs-on: ubuntu-latest
     permissions:
       actions: read
       contents: read
       pull-requests: read
       # Lets the action report the analysis on the analysed commit, where the pull request shows it.
       statuses: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - fixture: maven
-            name: Maven
-          - fixture: gradle
-            name: Gradle
-          - fixture: npm
-            name: Npm
-          - fixture: pnpm
-            name: Pnpm
-    steps:
-      # The analysis must never run the analysed code, whatever the scanner or Sonar adds. Fake build
-      # tools on the PATH record any run and fail it. Fake Java, wget and curl do the same. The
-      # fixtures' wrappers need them.
-      - name: 'Set traps'
-        # The PATH entry is the directory created here, holding nothing but the stand-ins.
-        run: | # zizmor: ignore[github-env]
-          mkdir -p "$RUNNER_TEMP/traps"
-          for tool in mvn gradle npm npx yarn pnpm cargo go python python3 pip pip3 poetry uv sbt java javac wget curl docker podman kubectl helm terraform tofu ansible ansible-playbook ansible-lint cfn-lint aws az bicep shellcheck pwsh powershell; do
-            printf "#!/bin/sh\necho \"\$0 \$*\" >> \"%s\"\nexit 1\n" "$RUNNER_TEMP/traps/sprung" > "$RUNNER_TEMP/traps/$tool"
-            chmod +x "$RUNNER_TEMP/traps/$tool"
-          done
-          # The fixtures' wrappers stay as Maven and Gradle generate them. They start Java through JAVA_HOME.
-          # The analysis step points JAVA_HOME here. Before that, mvnw downloads Maven with wget or curl.
-          mkdir -p "$RUNNER_TEMP/traps/jdk/bin"
-          cp "$RUNNER_TEMP/traps/java" "$RUNNER_TEMP/traps/javac" "$RUNNER_TEMP/traps/jdk/bin/"
-          # SonarCloud's engine runs dotnet build -version for its analytics, in the working directory the
-          # action gives the scanner; anywhere else, e.g. the checkout or the unpacked artifact, dotnet
-          # would read the pull request's global.json.
-          printf "#!/bin/sh\ncase \"\$PWD/\" in \"%s\"/sonar-fork-analysis-??????/run/) ;; *) echo \"dotnet \$* in \$PWD\" >> \"%s\";; esac\nexit 1\n" \
-            "$RUNNER_TEMP" "$RUNNER_TEMP/traps/sprung" > "$RUNNER_TEMP/traps/dotnet"
-          chmod +x "$RUNNER_TEMP/traps/dotnet"
-          echo "$RUNNER_TEMP/traps" >> "$GITHUB_PATH"
-
-      # Kernel audit records every program the runner starts while the analysis runs. The launches job
-      # checks them, since this job can't run this repository's scripts.
-      - name: 'Record program starts'
-        id: record
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q auditd
-          # The stop step checks this counter, which otherwise counts from the machine's start.
-          sudo auditctl --reset-lost
-          # Program starts and the forks that link each one to its parent. A process could switch to the
-          # 32-bit calls to pass unseen.
-          for arch in b64 b32; do
-            sudo auditctl -a always,exit -F arch=$arch -S execve,execveat,clone,clone3,fork,vfork -F success=1 -k sonar-fork-analysis
-          done
-
-      - name: 'Analyse with Sonar'
-        # This repository at the commit the workflow runs from, which for workflow_run is main's.
-        uses: $/
-        env:
-          SONAR_FORK_ANALYSIS_TRAP: ${{ runner.temp }}/traps/sprung
-          JAVA_HOME: ${{ runner.temp }}/traps/jdk
-        with:
-          project-key:
-            galois-groups_sonar-fork-analysis_${{ matrix.fixture }}_split
-          sonar-organization: galois-groups
-          sonar-token: ${{ secrets.SONAR_TOKEN }}
-          build-arguments:
-            -Dsonar.projectName=Sonar fork analysis - ${{ matrix.name }} split
-
-      - name: 'Stop recording'
-        id: stop
-        if: always() && steps.record.outcome == 'success'
-        # Written out, bash runs with pipefail: a failing ausearch fails the step.
-        shell: bash
-        run: |
-          sudo auditctl -D -k sonar-fork-analysis
-          lost="$(sudo auditctl -s | awk '$1 == "lost" { print $2 }')"
-          if [ "$lost" != 0 ]; then
-            echo "::error::The kernel lost $lost audit records."
-            exit 1
-          fi
-          # Stopping the service writes out the records it still holds.
-          sudo service auditd stop
-          sudo ausearch --input-logs --raw -k sonar-fork-analysis | tee "$RUNNER_TEMP/launches-$FIXTURE.log" > /dev/null
-          # Anyone can download the artifact, so the records must not hold the token, in plain or hexadecimal.
-          hex="$(printf %s "$SONAR_TOKEN" | od -An -tx1 | tr -d ' \n' | tr a-f A-F)"
-          if grep -q -F -e "$SONAR_TOKEN" -e "$hex" "$RUNNER_TEMP/launches-$FIXTURE.log"; then
-            rm "$RUNNER_TEMP/launches-$FIXTURE.log"
-            echo '::error::The audit records hold the Sonar token.'
-            exit 1
-          fi
-        env:
-          FIXTURE: ${{ matrix.fixture }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
-      - name: 'Upload the program starts'
-        if: always() && steps.stop.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: launches-${{ matrix.fixture }}
-          path: ${{ runner.temp }}/launches-${{ matrix.fixture }}.log
-          retention-days: 3
-          if-no-files-found: error
-
-      - name: 'Check the traps'
-        if: always()
-        run: |
-          if [ -e "$RUNNER_TEMP/traps/sprung" ]; then
-            echo '::error::The analysis ran build tools:'
-            # The recorded lines come from the analysed code's reach; none may pass for a workflow command.
-            resume="$(cat /proc/sys/kernel/random/uuid)"
-            echo "::stop-commands::$resume"
-            cat "$RUNNER_TEMP/traps/sprung"
-            echo "::$resume::"
-            exit 1
-          fi
-
-  # Runs main's copy of the check, from the workflow's own commit, without the token.
-  launches:
-    name: 'Check the programs the fork path started'
-    needs: analyze
-    if: ${{ !cancelled() && github.event.workflow_run.conclusion == 'success' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: 'Checkout project'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: 'Set up Node'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .node-version
-
-      - name: 'Download the program starts'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: launches-*
-          path: ${{ runner.temp }}/launches
-          merge-multiple: true
-
-      - name: 'Check them against the allowlist'
-        run:
-          node scripts/check-launches.ts .github/fork-path-programs.txt
-          "$RUNNER_TEMP"/launches/*.log
+    # Loaded from this workflow's commit, main's, never from the analysed one.
+    uses: ./.github/workflows/fork-path.yml
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

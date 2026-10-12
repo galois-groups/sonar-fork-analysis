@@ -125,9 +125,9 @@ jobs:
           sonar-token: ${{ secrets.SONAR_TOKEN }}
 ```
 
-The Sonar workflow only needs the project keys. Each project needs its own job
-there: in one job, a second analysis would find the first one's checkout and
-stop.
+The Sonar workflow only needs the project keys. Its matrix runs each project in
+a job of its own. That matters here: as two steps of one job, the second
+analysis would find the first one's checkout and stop.
 
 ```yaml
 jobs:
@@ -253,6 +253,7 @@ their files. If the Sonar workflow shares a runner with your build, empty the
 workspace before the action:
 
 ```yaml
+# Unlike rm -rf with *, this also removes .git. It keeps the folder the runner expects.
 - run: find "$GITHUB_WORKSPACE" -mindepth 1 -delete
 - uses: galois-groups/sonar-fork-analysis@v2
   with:

@@ -32,8 +32,8 @@ the features off:
   them directly. For pull requests from forks, GitHub's
   [dependency review action](https://github.com/actions/dependency-review-action)
   can check dependencies without any secrets.
-- **Build-system autoconfiguration** is part of SonarQube Cloud's engine. It can
-  run `mvnw` to configure the project.
+- **Build-system autoconfiguration** is part of the engine of both SonarQube
+  Cloud and SonarQube. It can run `mvnw` to configure the project.
 
 Don't turn either back on with `build-arguments` in the Sonar workflow, for
 example with `-Dsonar.sca.enabled=true`. That would run the pull request's build

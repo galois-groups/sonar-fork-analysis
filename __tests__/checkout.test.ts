@@ -11,13 +11,19 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import fc from 'fast-check'
 import * as core from '../__fixtures__/core.js'
 import { posixIt } from '../__fixtures__/platform.js'
 
 vi.doMock('@actions/core', () => core)
 
-const { checkoutCommit, cleanUpCheckout, prepareCheckout, verifyCheckout } =
-  await import('../src/checkout.js')
+const {
+  checkoutCommit,
+  cleanUpCheckout,
+  prepareCheckout,
+  sameRepository,
+  verifyCheckout
+} = await import('../src/checkout.js')
 
 let root: string
 let server: string
@@ -393,5 +399,87 @@ describe('verifyCheckout', () => {
     await expect(
       verifyCheckout(workspace, head, 'https://github.com/owner/repo', true)
     ).rejects.toThrow(/origin holds credentials/)
+  })
+})
+
+describe('sameRepository', () => {
+  type Repository = { host: string; owner: string; name: string }
+
+  const repository: fc.Arbitrary<Repository> = fc.record({
+    host: fc.domain(),
+    owner: fc.stringMatching(/^[a-z\d][a-z\d-]{0,15}$/),
+    name: fc
+      .stringMatching(/^[\w.-]{1,15}$/)
+      .filter((name) => !/^\.{1,2}$/.test(name) && !/\.git$/i.test(name))
+  })
+
+  // How git may hold a repository's URL: any of these forms, case, port, .git and trailing slashes.
+  function written({ host, owner, name }: Repository): fc.Arbitrary<string> {
+    const path = `${owner}/${name}`
+    return fc
+      .record({
+        form: fc.constantFrom(
+          `https://${host}/${path}`,
+          `git@${host}:${path}`,
+          `ssh://git@${host}/${path}`
+        ),
+        port: fc.option(fc.integer({ min: 1, max: 65_535 }), {
+          nil: undefined
+        }),
+        dotGit: fc.boolean(),
+        slashes: fc.integer({ min: 0, max: 2 }),
+        upper: fc.array(fc.boolean(), { minLength: 64, maxLength: 64 })
+      })
+      .map(({ form, port, dotGit, slashes, upper }) => {
+        let url =
+          port === undefined || form.startsWith('git@')
+            ? form
+            : form.replace(host, `${host}:${port}`)
+        url += (dotGit ? '.git' : '') + '/'.repeat(slashes)
+        return url.replace(/./g, (char, offset: number) =>
+          upper[offset % upper.length] ? char.toUpperCase() : char
+        )
+      })
+  }
+
+  const expected = ({ host, owner, name }: Repository) =>
+    `https://${host}/${owner}/${name}`
+
+  it('takes every form of the repository for it', () => {
+    fc.assert(
+      fc.property(
+        repository.chain((repo) => written(repo).map((url) => ({ repo, url }))),
+        ({ repo, url }) => {
+          expect(sameRepository(url, expected(repo))).toBe(true)
+        }
+      ),
+      { numRuns: 1000 }
+    )
+  })
+
+  it('never takes another repository for it, in any form', () => {
+    // Another repository differs in one part only: random pairs differ in all three, and would pass
+    // even with a comparison that ignored one of them.
+    const neighbour = fc
+      .tuple(
+        repository,
+        repository,
+        fc.constantFrom('host', 'owner', 'name') as fc.Arbitrary<
+          keyof Repository
+        >
+      )
+      .filter(([a, b, part]) => a[part].toLowerCase() !== b[part].toLowerCase())
+      .map(([a, b, part]) => ({ a, other: { ...a, [part]: b[part] } }))
+    fc.assert(
+      fc.property(
+        neighbour.chain(({ a, other }) =>
+          written(other).map((url) => ({ a, url }))
+        ),
+        ({ a, url }) => {
+          expect(sameRepository(url, expected(a))).toBe(false)
+        }
+      ),
+      { numRuns: 1000 }
+    )
   })
 })

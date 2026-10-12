@@ -18078,6 +18078,9 @@ function repositoryLocation(url) {
 	while (location.endsWith("/")) location = location.slice(0, -1);
 	return location.endsWith(".git") ? location.slice(0, -4) : location;
 }
+function sameRepository(url, expected) {
+	return repositoryLocation(url) === repositoryLocation(expected);
+}
 function holdsCredentials(url) {
 	const scheme = url.indexOf("://");
 	if (scheme < 0 || !/^https?$/i.test(url.slice(0, scheme))) return false;
@@ -18107,7 +18110,7 @@ async function verifyAdopted(workspace, repositoryUrl) {
 	]);
 	const url = origin.stdout.trim();
 	if (holdsCredentials(url)) throw new Error("The checkout's origin holds credentials: check out without them in the URL");
-	if (origin.exitCode !== 0 || repositoryLocation(url) !== repositoryLocation(repositoryUrl)) throw new Error(`The checkout's origin is not ${repositoryUrl}, where Sonar looks for the base branch: check out from this repository`);
+	if (origin.exitCode !== 0 || !sameRepository(url, repositoryUrl)) throw new Error(`The checkout's origin is not ${repositoryUrl}, where Sonar looks for the base branch: check out from this repository`);
 	const status = await git(workspace, [
 		"status",
 		"--porcelain",

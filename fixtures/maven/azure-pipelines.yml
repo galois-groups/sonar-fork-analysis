@@ -1,0 +1,8 @@
+# TODO: publish the test results.
+trigger:
+  - main
+pool:
+  vmImage: ubuntu-latest
+steps:
+  - script: ./mvnw verify
+    displayName: Build

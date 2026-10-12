@@ -15,6 +15,8 @@ export const TESTED_LANGUAGES = [
   'docker',
   'kubernetes',
   'githubactions',
+  'shell',
+  'terraform',
   'text',
   'secrets'
 ]

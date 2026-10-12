@@ -21,6 +21,6 @@ jobs:
       # Lets the action report the analysis on the analysed commit, where the pull request shows it.
       statuses: write
     # Loaded from this workflow's commit, main's, never from the analysed one.
-    uses: ./.github/workflows/fork-path.yml
+    uses: $/.github/workflows/fork-path.yml
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

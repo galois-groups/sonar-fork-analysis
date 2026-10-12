@@ -6,6 +6,8 @@
     // and imports that say whether they are types.
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
+    // Node needs the real file name in imports between scripts.
+    "allowImportingTsExtensions": true,
     "types": ["node"]
   },
   "include": ["./**/*.ts"],

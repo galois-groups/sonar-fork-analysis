@@ -1,0 +1,29 @@
+# The programs the scanner may start in a fork-path analysis, at any depth: its own, the Sonar
+# engine's and the analyzers'. scripts/check-launches.ts fails the fixtures' analyses when it starts
+# anything else.
+#
+# One absolute path per line. * stands for any characters but /, ** for any characters, and ${NAME}
+# for an environment variable of the checking job, which runs on the same kind of runner.
+
+# The scanner
+${RUNNER_TEMP}/sonar-scanner-*/scanner/sonar-scanner-*/bin/sonar-scanner
+/usr/bin/sh
+/usr/bin/dirname
+/usr/bin/basename
+${RUNNER_TEMP}/sonar-scanner-*/scanner/sonar-scanner-*/jre/bin/java
+${RUNNER_TEMP}/sonar-scanner-*/scanner/sonar-scanner-*/jre/lib/jspawnhelper
+
+# The engine, on the Java it downloads
+${HOME}/.sonar/cache/*/*/*/bin/java
+${HOME}/.sonar/cache/*/*/*/lib/jspawnhelper
+/usr/bin/uname
+/bin/sh
+/usr/bin/git
+# Refuses to run anywhere but the action's empty run directory: see the traps.
+${RUNNER_TEMP}/traps/dotnet
+
+# The analyzers' helpers
+/usr/local/bin/node
+${HOME}/.sonar/js/node-runtime/node
+${RUNNER_TEMP}/sonar-fork-analysis-*/scannerwork/.sonartmp/*/sonar-helm-for-iac-linux-amd64
+${RUNNER_TEMP}/sonar-fork-analysis-*/scannerwork/.sonartmp/bridge-dre/bridge

@@ -27,10 +27,13 @@ export const TESTED_LANGUAGES = [
   'secrets'
 ]
 
-// No file of a checkout can match it: /dev/null has no children. A language given only this pattern
-// detects no file, so the engine never loads its analyzer. It must not be empty: the engine then uses
-// the language's own suffixes.
-export const NO_FILE = 'file:/dev/null/never'
+// No file of a checkout can match it. The engine matches it against each file's path from the base
+// directory, which never holds an empty segment like //. Were the slashes collapsed, it would still
+// name a file in .git, which no commit can hold and the action never unpacks into. A language given
+// only this pattern detects no file, so the engine never loads its analyzer. It must not be empty: the
+// engine then uses the language's own suffixes. A file: pattern would work too, but the engine warns
+// that those are deprecated.
+export const NO_FILE = '.git//sonar-fork-analysis/never'
 
 // The settings build-arguments define, in order. The scanner takes -Dkey=value, and -D or --define
 // with key=value as the next argument.

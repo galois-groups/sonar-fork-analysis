@@ -1,7 +1,8 @@
 import { retry } from './retry.js'
 
-// The languages whose analyzers the fixtures run under traps on both paths. Kubernetes and GitHub
-// Actions files are YAML that iac classifies; the text and secrets scanners read whatever is indexed.
+// The languages whose analyzers the fixtures run under traps on both paths. iac finds some of them by
+// content in YAML and JSON files, whatever their patterns: Kubernetes, GitHub Actions, CloudFormation,
+// Ansible, Azure Pipelines and ARM templates. The text and secrets scanners read whatever is indexed.
 export const TESTED_LANGUAGES = [
   'java',
   'kotlin',
@@ -15,6 +16,10 @@ export const TESTED_LANGUAGES = [
   'docker',
   'kubernetes',
   'githubactions',
+  'cloudformation',
+  'ansible',
+  'azurepipelines',
+  'azureresourcemanager',
   'shell',
   'terraform',
   'text',

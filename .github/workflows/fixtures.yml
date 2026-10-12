@@ -366,4 +366,4 @@ jobs:
           # The fork path only analyses the languages the action is tested with.
           DIRECT_ONLY:
             ${{ matrix.fixture == 'npm' && 'packages/app/src/decoy.py' || '' }}
-          LANGUAGES: java,kotlin,js,ts,css,web,xml,yaml,json,docker,shell,terraform
+          LANGUAGES: java,kotlin,js,ts,css,web,xml,yaml,json,docker,shell,terraform,azureresourcemanager

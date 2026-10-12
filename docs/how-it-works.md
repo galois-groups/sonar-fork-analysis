@@ -199,10 +199,11 @@ YAML and JSON files by their content: CloudFormation templates, Ansible
 playbooks, Azure Pipelines files and ARM templates. The sample projects hold one
 of each, so these are tested languages like the others.
 
-The analyzers of the tested languages only read files. The sample projects check
-this on every change, against SonarQube Cloud's analyzers. Their analyses run
-among traps: fake programs and booby-trapped project files. A trap fails the run
-if an analyzer starts one of those programs or loads one of those files. See
+The analyzers of the tested languages only read the project's files. They never
+run them. The sample projects check this on every change, against SonarQube
+Cloud's analyzers. Their analyses run among traps: fake programs and
+booby-trapped project files. A trap fails the run if an analyzer starts one of
+those programs or loads one of those files. See
 [how it's tested](#how-its-tested).
 
 The JavaScript analyzer got a closer look, because JavaScript projects hold a
@@ -211,6 +212,11 @@ code run showed that the analyzer uses its own Node.js and TypeScript. It ran
 none of the project's configuration files (ESLint, Babel, TypeScript and others)
 and loaded no code from its `node_modules`. It only read `tsconfig` files and
 type declarations as data.
+
+Sonar analyses shell scripts, PowerShell and Mule applications with its
+Deterministic Rule Engine. That analyzer starts a native program of Sonar's own
+and sends it the code to check. Like the JavaScript analyzer's Node.js, it runs
+among the traps on every change.
 
 Analyzers of other languages haven't been checked. Some might start other
 programs. If you turn their language on with `build-arguments`, the action
@@ -286,9 +292,9 @@ these programs on the `PATH`:
 - the build tools of Maven, Gradle, Node, Python, Go, Rust and Scala;
 - Java, `wget` and `curl`, which the Maven and Gradle wrappers need;
 - `docker`, `podman`, `kubectl` and `helm`;
-- the tools of Terraform, Ansible, AWS, Azure and shell scripts: `terraform`,
-  `tofu`, `ansible`, `ansible-playbook`, `ansible-lint`, `cfn-lint`, `aws`,
-  `az`, `bicep` and `shellcheck`;
+- the tools of Terraform, Ansible, AWS, Azure, shell scripts and PowerShell:
+  `terraform`, `tofu`, `ansible`, `ansible-playbook`, `ansible-lint`,
+  `cfn-lint`, `aws`, `az`, `bicep`, `shellcheck`, `pwsh` and `powershell`;
 - `dotnet`, except in the scanner's own directory. SonarQube Cloud's engine runs
   it there to collect analytics.
 
@@ -296,9 +302,8 @@ Each fake fails the run if anything starts it. The sample projects add traps of
 their own: Gradle settings, Node configuration files and Node packages. These
 fail the run if the analysis ever loads them.
 
-Two sample projects also hold a file of an untested language: a Python file and
-a shell script. Each has a known issue. They check that untested languages stay
-off on the fork path. The direct analysis must report the issue, but the fork
-path must not analyse the file.
+One sample project also holds a Python file with a known issue. It checks that
+untested languages stay off on the fork path. The direct analysis must report
+the issue, but the fork path must not analyse the file.
 
 Older SonarQube Server versions and commercial editions aren't tested.

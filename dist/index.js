@@ -73748,6 +73748,8 @@ var TESTED_LANGUAGES = [
 	"azurepipelines",
 	"azureresourcemanager",
 	"terraform",
+	"shell",
+	"powershell",
 	"text",
 	"secrets"
 ];

@@ -1,4 +1,5 @@
-# Analyses the test fixtures with the action as it is in this pull request.
+# Analyses the test fixtures with the action as it is in this pull request. Both paths download
+# SonarCloud's engine and analyzers, which change on Sonar's schedule, hence the weekly run.
 #
 # Must stay on 'pull_request', never 'pull_request_target': on fork pull requests GitHub withholds the
 # Sonar token here, which is what keeps fork code away from it.
@@ -8,6 +9,8 @@ on:
     branches:
       - main
   pull_request:
+  schedule:
+    - cron: '47 5 * * 1'
 # A pull request's comparison waits for SonarCloud's analysis of its commit, which a newer push replaces:
 # the older run could only time out.
 concurrency:

@@ -5,18 +5,18 @@ recipes for common setups, supported runners and limitations.
 
 ## Inputs
 
-| Input                | Required              | Default            | Description                                                                                                                                                                                                                                                                                                         |
-| -------------------- | --------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `project-key`        | Yes                   |                    | The Sonar project key. Use the same one in the build and the Sonar workflow.                                                                                                                                                                                                                                        |
-| `sonar-organization` | For SonarQube Cloud   |                    | The Sonar organization.                                                                                                                                                                                                                                                                                             |
-| `sonar-token`        | In the Sonar workflow |                    | The Sonar token. It's empty on pull requests from forks, which makes the action take the fork path.                                                                                                                                                                                                                 |
-| `sonar-host-url`     | For SonarQube Server  |                    | The server URL. Leave it empty for SonarQube Cloud or to use the `SONAR_HOST_URL` environment variable. Direct analyses also fall back to the build's own `sonar.host.url`. The Sonar workflow doesn't.                                                                                                             |
-| `mode`               | No                    | `auto`             | `auto` picks the mode, see [how it works](how-it-works.md#the-two-workflows). `direct`, `prepare` or `analyze` forces one.                                                                                                                                                                                          |
-| `working-directory`  | No                    | `.`                | The directory holding the project.                                                                                                                                                                                                                                                                                  |
-| `build-tool`         | No                    | `auto`             | `auto` picks Maven or Gradle when their build files are there. Otherwise it runs the npm scanner when there's a `package.json`, and Sonar's scanner when there's a `sonar-project.properties`. `maven`, `gradle`, `npm` or `scanner` forces one. See [setup](../README.md#2-add-the-action-to-your-build-workflow). |
-| `build-goals`        | No                    | `verify` / `check` | Maven goals or Gradle tasks to run. Not with `npm` or `scanner`.                                                                                                                                                                                                                                                    |
-| `build-arguments`    | No                    |                    | Extra build flags. In the Sonar workflow they're passed to the scanner instead, for example `-Dsonar.projectName=App`. The scanner doesn't run in the checkout there, so use absolute paths.                                                                                                                        |
-| `github-token`       | No                    | `github.token`     | Used to download the build's artifact, look up the pull request, check it out and post the status.                                                                                                                                                                                                                  |
+| Input                | Required              | Default            | Description                                                                                                                                                                                                                                                                                                                          |
+| -------------------- | --------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `project-key`        | Yes                   |                    | The Sonar project key. Use the same one in the build and the Sonar workflow.                                                                                                                                                                                                                                                         |
+| `sonar-organization` | For SonarQube Cloud   |                    | The Sonar organization.                                                                                                                                                                                                                                                                                                              |
+| `sonar-token`        | In the Sonar workflow |                    | The Sonar token. It's empty on pull requests from forks, which makes the action take the fork path.                                                                                                                                                                                                                                  |
+| `sonar-host-url`     | For SonarQube Server  |                    | The server URL. Leave it empty for SonarQube Cloud or to use the `SONAR_HOST_URL` environment variable. Direct analyses also fall back to the build's own `sonar.host.url`. The Sonar workflow doesn't.                                                                                                                              |
+| `mode`               | No                    | `auto`             | `auto` picks the mode, see [how it works](how-it-works.md#the-two-workflows). `direct`, `prepare` or `analyze` forces one.                                                                                                                                                                                                           |
+| `working-directory`  | No                    | `.`                | The directory holding the project.                                                                                                                                                                                                                                                                                                   |
+| `build-tool`         | No                    | `auto`             | `auto` picks Maven or Gradle when their build files are there. Otherwise it runs the npm scanner when there's a `package.json`. Without one, it runs Sonar's scanner when there's a `sonar-project.properties`. `maven`, `gradle`, `npm` or `scanner` forces one. See [setup](../README.md#2-add-the-action-to-your-build-workflow). |
+| `build-goals`        | No                    | `verify` / `check` | Maven goals or Gradle tasks to run. Not with `npm` or `scanner`.                                                                                                                                                                                                                                                                     |
+| `build-arguments`    | No                    |                    | Extra build flags. In the Sonar workflow they're passed to the scanner instead, for example `-Dsonar.projectName=App`. The scanner doesn't run in the checkout there, so use absolute paths.                                                                                                                                         |
+| `github-token`       | No                    | `github.token`     | Used to download the build's artifact, look up the pull request, check it out and post the status.                                                                                                                                                                                                                                   |
 
 `build-goals` and `build-arguments` take one entry per line, so write several as
 a YAML block:
@@ -265,9 +265,9 @@ Don't let that runner build pull requests from forks, though. See
 
 ### Caching the Sonar scanner
 
-The action downloads Sonar's scanner every time it runs it: in the Sonar
-workflow, and in the build of projects with a `sonar-project.properties` and no
-`package.json`. That's about 50 MB. The action keeps the download in
+The action downloads Sonar's scanner every time it runs it. That's about 50 MB.
+The Sonar workflow always runs it. A build only runs it with the `scanner`
+[build tool](#inputs). The action keeps the download in
 `${{ runner.tool_cache }}/sonar-fork-analysis` and checks it against the pinned
 checksum before each use. So caching that directory is safe. In the build, add
 this before the action:
@@ -292,9 +292,9 @@ instead:
     restore-keys: sonar-scanner-
 ```
 
-The Sonar workflow can only restore what a build on your main branch saved. Only
-the builds of those projects run the scanner, so Maven, Gradle and Node projects
-gain nothing. Self-hosted runners keep the directory between jobs without these
+The Sonar workflow can only restore what a build on your main branch saved. So
+Maven, Gradle and Node projects gain nothing, because their builds don't run the
+scanner. Self-hosted runners keep the directory between jobs without these
 steps.
 
 ## Supported runners
@@ -315,10 +315,6 @@ Tested and untested mean the same as for
 
 ## Limitations
 
-- With `build-tool: scanner`, the action reads settings only from
-  `sonar-project.properties` and `build-arguments`. It doesn't guess any from
-  `package.json`, unlike Sonar's npm scanner. So set your coverage report path
-  yourself.
 - On pull requests from forks, only the analyzers of tested languages run. See
   [languages on pull requests from forks](#languages-on-pull-requests-from-forks).
 - Dependency analysis (SCA) and the engine's build-system autoconfiguration are

@@ -34,11 +34,11 @@ flowchart LR
 ```
 
 1. The pull request starts your build workflow. It runs without the Sonar token.
-   For Maven and Gradle, the action runs the build. Sonar's build plugin then
-   works out the analysis settings without running the analysis. For other
-   projects, the action runs after your own build and tests. For a Node project,
-   Sonar's npm scanner works out the settings the same way. For the rest, the
-   action reads your `sonar-project.properties`.
+   For Maven and Gradle, the action runs the build. For other projects, it runs
+   after your own build and tests. Then Sonar's own tool works out the analysis
+   settings without running the analysis: the Maven or Gradle plugin, the npm
+   scanner for a Node project and Sonar's scanner for a project with only a
+   `sonar-project.properties`.
 2. The action uploads the settings and what the analysis needs as an artifact.
    An artifact is a set of files GitHub keeps with the run. This one holds
    compiled classes, libraries, coverage and test reports. For a Node project,

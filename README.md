@@ -47,14 +47,14 @@ Coming from v1? It no longer gets fixes, not even security fixes. See
 
 ## Supported projects
 
-| Project                                                                            | What the action does                                                       | Tested |
-| ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------ |
-| Maven, Gradle                                                                      | [Runs the build](#if-the-action-runs-your-build-maven-and-gradle)          | Yes    |
-| npm, pnpm                                                                          | [Runs after your build and tests](#if-you-run-your-build-everything-else)  | Yes    |
-| Yarn with `nodeLinker: node-modules`, Bun                                          | [Runs after your build and tests](#if-you-run-your-build-everything-else)  | No     |
-| Yarn Plug'n'Play                                                                   | [Runs after your build and tests](#if-you-run-your-build-everything-else)¹ | No     |
-| Python, Go, PHP and others with a `sonar-project.properties` and no `package.json` | [Runs after your build and tests](#if-you-run-your-build-everything-else)² | No     |
-| .NET, C, C++ and Objective-C                                                       | Not supported³                                                             |        |
+| Project                                                      | What the action does                                                       | Tested |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------- | ------ |
+| Maven, Gradle                                                | [Runs the build](#if-the-action-runs-your-build-maven-and-gradle)          | Yes    |
+| npm, pnpm                                                    | [Runs after your build and tests](#if-you-run-your-build-everything-else)  | Yes    |
+| Yarn with `nodeLinker: node-modules`, Bun                    | [Runs after your build and tests](#if-you-run-your-build-everything-else)  | No     |
+| Yarn Plug'n'Play                                             | [Runs after your build and tests](#if-you-run-your-build-everything-else)¹ | No     |
+| Python, Go, PHP and others with a `sonar-project.properties` | [Runs after your build and tests](#if-you-run-your-build-everything-else)² | No     |
+| .NET, C, C++ and Objective-C                                 | Not supported³                                                             |        |
 
 ¹ Rules that need types find fewer issues because there's no `node_modules` to
 read the types from. Setting `nodeLinker: node-modules` avoids this.
@@ -184,10 +184,10 @@ steps:
 ```
 
 The action works with `@sonar/scan` 4.2.7 or later. Use 5.0.0 or later if you
-can. Older versions download Sonar's engine before the action can read their
-settings. That's slower, and it fails on SonarQube Server unless the server
-allows access without a token. With Yarn's Plug'n'Play there's no `node_modules`
-for `npx` to look in, so the latest version runs.
+can. Older versions first download Sonar's engine, which slows them down. On
+SonarQube Server, that download fails unless the server allows access without a
+token. With Yarn's Plug'n'Play there's no `node_modules` for `npx` to look in,
+so the latest version runs.
 
 For a Node project, the action also passes the type declarations in your
 `node_modules` to the Sonar workflow. It passes the links your package manager
@@ -258,9 +258,9 @@ and
 [Sonar workflow](https://github.com/instancio/instancio/blob/main/.github/workflows/sonar.yml).
 
 This repository analyses itself with the action too. It's a TypeScript project,
-so the action runs the npm scanner after its tests. The scanner also reads its
-`sonar-project.properties`. See its [build workflow](.github/workflows/ci.yml)
-and [Sonar workflow](.github/workflows/sonar.yml).
+so the action runs the npm scanner after its tests. See its
+[build workflow](.github/workflows/ci.yml) and
+[Sonar workflow](.github/workflows/sonar.yml).
 
 ## Reporting vulnerabilities
 

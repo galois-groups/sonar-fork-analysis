@@ -87,16 +87,28 @@ describe('detectBuildTool', () => {
     })
   })
 
-  it('needs sonar-project.properties to run the scanner on a Node project', () => {
-    expect(() => detectBuildTool(project('package.json'))).toThrow(
-      /No Maven or Gradle build or sonar-project.properties found/
-    )
+  it('runs the npm scanner through npx on a Node project, which also reads the scanner settings', () => {
+    const npm = {
+      name: 'npm',
+      executable: 'npx',
+      prefix: ['--yes', '@sonar/scan']
+    }
+    expect(detectBuildTool(project('package.json'))).toEqual(npm)
+    expect(
+      detectBuildTool(project('package.json', 'sonar-project.properties'))
+    ).toEqual(npm)
+    expect(
+      detectBuildTool(project('sonar-project.properties'), 'npm').name
+    ).toBe('npm')
   })
 
   it('prefers the Java build to the scanner settings next to it', () => {
     expect(
       detectBuildTool(project('pom.xml', 'sonar-project.properties')).name
     ).toBe('maven')
+    expect(detectBuildTool(project('build.gradle', 'package.json')).name).toBe(
+      'gradle'
+    )
     expect(
       detectBuildTool(project('pom.xml', 'package.json'), 'scanner').name
     ).toBe('scanner')
@@ -110,7 +122,7 @@ describe('detectBuildTool', () => {
 
   it('points at working-directory when nothing is found', () => {
     expect(() => detectBuildTool(project('README.md'))).toThrow(
-      /set the working-directory input/
+      /No Maven or Gradle build, package.json or sonar-project.properties found in .*, set the working-directory input/
     )
   })
 })

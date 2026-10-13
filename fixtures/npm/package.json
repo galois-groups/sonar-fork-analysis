@@ -10,6 +10,7 @@
     "test": "npm test --workspaces"
   },
   "devDependencies": {
+    "@sonar/scan": "^5.0.1",
     "@types/node": "^24.0.0"
   }
 }

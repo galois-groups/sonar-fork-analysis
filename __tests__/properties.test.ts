@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseProperties } from '../src/properties.js'
+import { parseNpmDump, parseProperties } from '../src/properties.js'
 
 describe('parseProperties', () => {
   it('reads keys with escaped separators, as in Maven module keys', () => {
@@ -47,5 +47,71 @@ describe('parseProperties', () => {
 
   it('keeps empty values', () => {
     expect(parseProperties('sonar.sources=\n').get('sonar.sources')).toBe('')
+  })
+})
+
+describe('parseNpmDump', () => {
+  // The npm scanner's dump: its settings as a JSON string inside JSON.
+  const dump = (properties: unknown): string =>
+    JSON.stringify({
+      propertiesJSON: JSON.stringify({ scannerProperties: properties }),
+      javaBinPath: '/placeholder',
+      scannerEnginePath: '/placeholder',
+      args: ['-jar', '/placeholder']
+    })
+
+  it('reads the settings inside it', () => {
+    expect(
+      parseNpmDump(
+        dump([
+          { key: 'sonar.projectBaseDir', value: '/work/app' },
+          { key: 'sonar.exclusions', value: 'node_modules/**,coverage/**' },
+          { key: 'sonar.projectDescription', value: 'with = and \\ inside' }
+        ])
+      )
+    ).toEqual(
+      new Map([
+        ['sonar.projectBaseDir', '/work/app'],
+        ['sonar.exclusions', 'node_modules/**,coverage/**'],
+        ['sonar.projectDescription', 'with = and \\ inside']
+      ])
+    )
+  })
+
+  it.each([
+    ['not JSON', 'sonar.projectKey=app', 'not JSON'],
+    ['no settings', JSON.stringify({ args: [] }), 'no propertiesJSON string'],
+    [
+      'settings that are not JSON',
+      JSON.stringify({ propertiesJSON: '{' }),
+      'propertiesJSON is not JSON'
+    ],
+    [
+      'no list',
+      JSON.stringify({ propertiesJSON: '{}' }),
+      'no scannerProperties list'
+    ],
+    [
+      'a value that is not a string',
+      dump([{ key: 'sonar.verbose', value: true }]),
+      'a setting that is not a key and a string value'
+    ],
+    [
+      'an entry without a key',
+      dump([null]),
+      'a setting that is not a key and a string value'
+    ],
+    [
+      'a key twice',
+      dump([
+        { key: 'sonar.sources', value: 'src' },
+        { key: 'sonar.sources', value: '.' }
+      ]),
+      'sonar.sources appears twice'
+    ]
+  ])('refuses %s', (_, text, reason) => {
+    expect(() => parseNpmDump(text)).toThrow(
+      `The npm scanner's dump is not in the expected format: ${reason}`
+    )
   })
 })

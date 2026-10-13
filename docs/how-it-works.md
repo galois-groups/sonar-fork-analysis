@@ -34,9 +34,10 @@ flowchart LR
 ```
 
 1. The pull request starts your build workflow. It runs without the Sonar token.
-   For Maven and Gradle, the action runs the build. Sonar's build plugin then
-   works out the analysis settings without running the analysis. For other
-   projects, the action runs after your own build and tests and reads your
+   For Maven and Gradle, the action runs the build. For other projects, it runs
+   after your own build and tests. Then Sonar's own tool works out the analysis
+   settings without running the analysis: the Maven or Gradle plugin, the npm
+   scanner for a Node project and Sonar's scanner for a project with only a
    `sonar-project.properties`.
 2. The action uploads the settings and what the analysis needs as an artifact.
    An artifact is a set of files GitHub keeps with the run. This one holds
@@ -93,11 +94,17 @@ picks the mode from the event and whether there's a token.
 
 On the fork path, the build collects its settings without running the analysis.
 It uses simulation mode (`sonar.scanner.internal.dumpToFile`), a feature of
-Sonar's plugins for Maven and Gradle and of the scanner the action pins. Sonar
-uses it in its own tests but doesn't document it. So a release could change it.
-If it stops working, the build fails with a message that no analysis settings
-were written. This project's tests keep up with the latest plugins, so such a
-change should show up here first.
+Sonar's plugins for Maven and Gradle, of its npm scanner and of the scanner the
+action pins. Sonar uses it in its own tests but doesn't document it. So a
+release could change it. If it stops working, the build fails with a message
+that no analysis settings were written. This project's tests keep up with the
+latest plugins and npm scanner, so such a change should show up here first.
+
+The npm scanner writes its settings in a format of its own, which the action
+converts. Before it writes them, it would ask the server for its version, its
+Java and its engine. The action skips all three, so from `@sonar/scan` 5.0.0 on,
+the npm scanner needs no server at all. Older versions still download the engine
+first.
 
 ## What the Sonar workflow does
 

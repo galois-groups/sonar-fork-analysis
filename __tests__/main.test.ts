@@ -9,6 +9,7 @@ import {
 } from 'vitest'
 import {
   cpSync,
+  existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -200,9 +201,22 @@ describe('run', () => {
     }
   })
 
-  it('analyses a Node project with the scanner it pins', async () => {
+  it.each([
+    [
+      'a Node project with the npm scanner',
+      'package.json',
+      'npx',
+      ['--yes', '@sonar/scan', '-Dsonar.projectKey=key']
+    ],
+    [
+      'other projects with the scanner it pins',
+      'main.py',
+      '/opt/sonar-scanner/bin/sonar-scanner',
+      ['-Dsonar.projectKey=key']
+    ]
+  ])('analyses %s', async (_, file, expectedTool, expectedArgs) => {
     rmSync(join(project, 'pom.xml'))
-    writeFileSync(join(project, 'package.json'), '{}')
+    writeFileSync(join(project, file), '{}')
     writeFileSync(join(project, 'sonar-project.properties'), 'sonar.sources=.')
     exec.mockImplementation(async (_tool, _args, options) => {
       const work = join(options!.cwd!, '.scannerwork')
@@ -215,8 +229,8 @@ describe('run', () => {
 
     expect(core.setFailed).not.toHaveBeenCalled()
     const [tool, args, options] = exec.mock.calls[0]
-    expect(tool).toBe('/opt/sonar-scanner/bin/sonar-scanner')
-    expect(args).toEqual(['-Dsonar.projectKey=key'])
+    expect(tool).toBe(expectedTool)
+    expect(args).toEqual(expectedArgs)
     expect(options!.cwd).toBe(project)
     expect(options!.env!.SONAR_TOKEN).toBe(TOKEN)
   })
@@ -540,6 +554,7 @@ describe('run in prepare mode', () => {
   })
 
   it('says when a Node project has no type declarations to ship', async () => {
+    inputs['build-tool'] = 'scanner'
     rmSync(join(project, 'pom.xml'))
     writeFileSync(join(project, 'package.json'), '{}')
     writeFileSync(join(project, 'sonar-project.properties'), 'sonar.sources=.')
@@ -554,6 +569,116 @@ describe('run in prepare mode', () => {
     expect(core.warning).not.toHaveBeenCalledWith(
       expect.stringContaining('No sonar-project.properties')
     )
+  })
+
+  // Plays the npm scanner in simulation mode: its dump is JSON, its log goes to standard output.
+  function simulateNpm(settings: Record<string, string>): void {
+    exec.mockImplementation(async (_tool, args) => {
+      const value = (name: string): string =>
+        args!
+          .find((arg) => arg.startsWith(`-D${name}=`))!
+          .slice(name.length + 3)
+      const scannerProperties = Object.entries(settings).map(([key, v]) => ({
+        key,
+        value: v
+      }))
+      writeFileSync(
+        value('sonar.scanner.internal.dumpToFile'),
+        JSON.stringify({
+          propertiesJSON: JSON.stringify({ scannerProperties }),
+          javaBinPath: value('sonar.scanner.javaExePath'),
+          scannerEnginePath: value('sonar.scanner.engineJarPath'),
+          args: []
+        })
+      )
+      return 0
+    })
+  }
+
+  it('reads a Node project with the npm scanner, offline, and ships its type declarations', async () => {
+    rmSync(join(project, 'pom.xml'))
+    writeFileSync(join(project, 'package.json'), '{}')
+    mkdirSync(join(project, 'coverage'))
+    writeFileSync(join(project, 'coverage', 'lcov.info'), 'TN:')
+    mkdirSync(join(project, 'node_modules', 'express'), { recursive: true })
+    writeFileSync(join(project, 'node_modules', 'express', 'index.d.ts'), '')
+    mkdirSync(join(project, 'packages', 'app'), { recursive: true })
+    simulateNpm({
+      'sonar.projectBaseDir': project,
+      // As written in the root sonar-project.properties: relative.
+      'sonar.modules': 'app',
+      'app.sonar.projectBaseDir': 'packages/app',
+      'sonar.exclusions': 'node_modules/**,coverage/**',
+      'sonar.javascript.lcov.reportPaths': 'coverage/lcov.info',
+      'sonar.scanner.os': 'linux',
+      'sonar.userHome': '/elsewhere'
+    })
+
+    await run()
+
+    expect(core.setFailed).not.toHaveBeenCalled()
+    const [tool, args] = exec.mock.calls[0]
+    expect(tool).toBe('npx')
+    expect(args!.slice(0, 2)).toEqual(['--yes', '@sonar/scan'])
+    expect(args).toContain('-Dsonar.scanner.internal.sqVersion=2025.1')
+    // The engine placeholder must exist, or the npm scanner refuses it.
+    const engine = args!
+      .find((arg) => arg.startsWith('-Dsonar.scanner.engineJarPath='))!
+      .split('=')[1]
+    expect(existsSync(engine)).toBe(true)
+    expect(args!.some((arg) => arg.startsWith('-Dsonar.host.url='))).toBe(false)
+    const [, files, staging] = artifact.uploadArtifact.mock.calls[0]
+    expect(
+      JSON.parse(readFileSync(join(staging, 'settings.json'), 'utf8'))
+    ).toMatchObject({
+      buildTool: 'npm',
+      settings: {
+        'sonar.projectBaseDir': '{workspace}',
+        'sonar.modules': 'app',
+        'app.sonar.projectBaseDir': '{workspace}/packages/app',
+        'sonar.exclusions': 'node_modules/**,coverage/**',
+        'sonar.javascript.lcov.reportPaths': 'coverage/lcov.info'
+      }
+    })
+    expect(files).toContain(
+      join(staging, 'workspace', 'node_modules', 'express', 'index.d.ts')
+    )
+    expect(files).toContain(join(staging, 'workspace', 'coverage', 'lcov.info'))
+    expect(core.warning).not.toHaveBeenCalled()
+  })
+
+  it('tells an old npm scanner that the server refused to update, from its standard output', async () => {
+    rmSync(join(project, 'pom.xml'))
+    writeFileSync(join(project, 'package.json'), '{}')
+    exec.mockImplementation(async (_tool, _args, options) => {
+      options!.listeners!.stdout!(
+        Buffer.from(
+          '[ERROR] Bootstrapper: An error occurred: AxiosError: Request failed with status code 401\n'
+        )
+      )
+      return 1
+    })
+
+    await run()
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /exit code 1: before 5\.0\.0, @sonar\/scan downloads/
+      )
+    )
+  })
+
+  it('refuses an npm dump in another format', async () => {
+    rmSync(join(project, 'pom.xml'))
+    writeFileSync(join(project, 'package.json'), '{}')
+    simulate('sonar.projectKey=app')
+
+    await run()
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      "The npm scanner's dump is not in the expected format: not JSON"
+    )
+    expect(artifact.uploadArtifact).not.toHaveBeenCalled()
   })
 
   it('needs the project key, which names the artifact', async () => {

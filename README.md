@@ -153,10 +153,16 @@ either up to date.
 #### If you run your build: everything else
 
 This covers JavaScript, TypeScript, Python, Go, PHP and other languages. Add the
-action after your own build and test steps. It runs Sonar's scanner, as Sonar's
-own scan action does. The scanner reads its settings from your
-`sonar-project.properties`. The action recognises these projects by that file.
-For a Node project:
+action after your own build and test steps.
+
+For a Node project, the action runs Sonar's npm scanner (`@sonar/scan`) with
+`npx`. The action recognises these projects by their `package.json`. The scanner
+takes the project's name and version from it. It finds a coverage report in
+`coverage/lcov.info` by itself. If there's also a `sonar-project.properties`
+next to it, it reads that too. It reads no other settings file, so in a
+monorepo, each package's settings go in that file, under the package's module
+prefix: `app.sonar.tests=test`. If your `package.json` lists `@sonar/scan`, the
+action runs that version. Otherwise it runs the latest.
 
 ```yaml
 steps:
@@ -168,7 +174,6 @@ steps:
     with:
       node-version: 24
   - run: npm ci
-  # Write coverage where sonar-project.properties says, here coverage/lcov.info.
   - run: npm test -- --coverage
   # Add this after your tests.
   - uses: galois-groups/sonar-fork-analysis@v2
@@ -178,21 +183,31 @@ steps:
       sonar-token: ${{ secrets.SONAR_TOKEN }}
 ```
 
-```properties
-sonar.sources=src
-sonar.tests=test
-sonar.javascript.lcov.reportPaths=coverage/lcov.info
-```
-
-Other languages have their own report settings, such as
-`sonar.python.coverage.reportPaths=coverage.xml` for Python. On pull requests
-from forks, Python is only analysed once you
-[turn it on](docs/configuration.md#languages-on-pull-requests-from-forks).
+The action works with `@sonar/scan` 4.2.7 or later. Use 5.0.0 or later if you
+can. Older versions first download Sonar's engine, which slows them down. On
+SonarQube Server, that download fails unless the server allows access without a
+token. With Yarn's Plug'n'Play there's no `node_modules` for `npx` to look in,
+so the latest version runs.
 
 For a Node project, the action also passes the type declarations in your
 `node_modules` to the Sonar workflow. It passes the links your package manager
 makes there too. Rules that need types then work on pull requests from forks as
 well, even across the packages of a monorepo.
+
+For other languages, the action runs Sonar's scanner, as Sonar's own scan action
+does. It reads its settings from your `sonar-project.properties`. The action
+recognises these projects by that file:
+
+```properties
+sonar.sources=src
+sonar.python.coverage.reportPaths=coverage.xml
+```
+
+If a `package.json` is next to that file, the project gets the npm scanner
+instead, as described above. To keep Sonar's scanner, set `build-tool: scanner`.
+
+On pull requests from forks, Python is only analysed once you
+[turn it on](docs/configuration.md#languages-on-pull-requests-from-forks).
 
 ### 3. Add the Sonar workflow
 
@@ -242,9 +257,9 @@ from forks with this action. It's a Maven build with 38 modules. See its
 and
 [Sonar workflow](https://github.com/instancio/instancio/blob/main/.github/workflows/sonar.yml).
 
-This repository analyses itself with the action too. It's a TypeScript project
-with a `sonar-project.properties` file. It runs the scanner after its tests. See
-its [build workflow](.github/workflows/ci.yml) and
+This repository analyses itself with the action too. It's a TypeScript project,
+so the action runs the npm scanner after its tests. See its
+[build workflow](.github/workflows/ci.yml) and
 [Sonar workflow](.github/workflows/sonar.yml).
 
 ## Reporting vulnerabilities

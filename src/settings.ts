@@ -181,8 +181,10 @@ export function isAllowed(bareKey: string): boolean {
 type SplitKey = { prefix: string; bareKey: string }
 
 export type ModuleTree = {
-  // Every module, as the prefix of the keys the engine gives it: '', 'a.', 'a.b.'.
+  // Every module, as the prefix of the keys the engine gives it: '', 'a.', 'a.b.'. Parents first.
   prefixes: string[]
+  // Each module's parent, by prefix. Module ids may hold dots, so a prefix alone doesn't tell.
+  parents: Map<string, string>
   // The module the engine gives a key to, and the key within it.
   split(key: string): SplitKey
   // The key the engine gives a module as the given one, if any.
@@ -204,6 +206,7 @@ export function byCodeUnit(a: string, b: string): number {
 export function moduleTree(settings: Map<string, string>): ModuleTree {
   const assigned = new Map<string, SplitKey>()
   const prefixes: string[] = []
+  const parents = new Map<string, string>()
   const seen = new Set<string>()
   const walk = (prefix: string, keys: Map<string, string>): void => {
     prefixes.push(prefix)
@@ -239,6 +242,7 @@ export function moduleTree(settings: Map<string, string>): ModuleTree {
           keys.delete(relative)
         }
       }
+      parents.set(nested, prefix)
       walk(nested, own)
     }
     for (const [relative, original] of keys)
@@ -253,6 +257,7 @@ export function moduleTree(settings: Map<string, string>): ModuleTree {
   }
   return {
     prefixes,
+    parents,
     split: (key) => assigned.get(key) ?? { prefix: '', bareKey: key },
     keyOf: (prefix, bareKey) => byModule.get(prefix)?.get(bareKey)
   }

@@ -47,3 +47,39 @@ function unescape(text: string): string {
       : (ESCAPES[escaped] ?? escaped)
   )
 }
+
+// Parses the JSON the npm scanner writes in its simulation mode: the settings are a JSON string inside
+// it. Anything but one string per key fails, rather than guessing.
+export function parseNpmDump(text: string): Map<string, string> {
+  const fail = (reason: string): never => {
+    throw new Error(
+      `The npm scanner's dump is not in the expected format: ${reason}`
+    )
+  }
+  let outer: unknown
+  let inner: unknown
+  try {
+    outer = JSON.parse(text)
+  } catch {
+    fail('not JSON')
+  }
+  const json = (outer as { propertiesJSON?: unknown } | null)?.propertiesJSON
+  if (typeof json !== 'string') fail('no propertiesJSON string')
+  try {
+    inner = JSON.parse(json as string)
+  } catch {
+    fail('propertiesJSON is not JSON')
+  }
+  const list = (inner as { scannerProperties?: unknown } | null)
+    ?.scannerProperties
+  if (!Array.isArray(list)) fail('no scannerProperties list')
+  const properties = new Map<string, string>()
+  for (const entry of list as unknown[]) {
+    const { key, value } = (entry ?? {}) as { key?: unknown; value?: unknown }
+    if (typeof key !== 'string' || typeof value !== 'string')
+      fail('a setting that is not a key and a string value')
+    if (properties.has(key as string)) fail(`${key as string} appears twice`)
+    properties.set(key as string, value as string)
+  }
+  return properties
+}

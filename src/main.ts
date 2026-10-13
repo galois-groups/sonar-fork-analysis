@@ -59,11 +59,14 @@ import {
   artifactName,
   directArtifactName,
   missingDump,
+  npmSimulationProperties,
+  resolveModuleBases,
   simulationProperties,
   stageAnalysis,
-  typeInformation
+  typeInformation,
+  type TypeInformation
 } from './prepare.js'
-import { parseProperties } from './properties.js'
+import { parseNpmDump, parseProperties } from './properties.js'
 import { findNewReport, snapshotReports } from './report.js'
 import { installScanner } from './scanner.js'
 import {
@@ -149,32 +152,7 @@ async function prepare(inputs: Inputs): Promise<void> {
   const tool = detectBuildTool(workingDirectory, inputs.buildTool)
   warnWithoutSettings(tool, workingDirectory, inputs.buildArguments)
   const temp = tempDirectory()
-  const dump = join(temp, 'dump.properties')
-  const args = sonarBuildArguments(
-    tool,
-    inputs.buildGoals,
-    simulationProperties(dump),
-    inputs.buildArguments
-  )
-
-  core.info(
-    `Preparing the analysis of the ${tool.name} build in ${workingDirectory}`
-  )
-  const env = jobEnvironment()
-  delete env.SONAR_TOKEN
-  let errorOutput = ''
-  const exitCode = await exec(await executable(tool), args, {
-    cwd: workingDirectory,
-    env,
-    ignoreReturnCode: true,
-    listeners: { stderr: (data) => (errorOutput += data.toString()) }
-  })
-  if (exitCode !== 0) throw new Error(buildFailure(tool, exitCode, errorOutput))
-  if (!existsSync(dump)) throw new Error(missingDump(tool))
-
-  // The dump holds the build's whole environment, so it never leaves this machine.
-  const settings = parseProperties(readFileSync(dump, 'utf8'))
-  rmSync(dump)
+  const settings = await simulate(tool, workingDirectory, temp, inputs)
   const { kept, dropped, replaced, ignored } = filterSettings(settings)
   core.debug(`Settings the analysis sets itself: ${replaced.join(', ')}`)
   core.info(
@@ -196,30 +174,7 @@ async function prepare(inputs: Inputs): Promise<void> {
     )
 
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd()
-  const types =
-    tool.name === 'scanner'
-      ? typeInformation(workingDirectory, workspace)
-      : { files: [], links: [], outside: 0 }
-  if (types.files.length > 0 || types.links.length > 0) {
-    const bytes = types.files.reduce(
-      (sum, path) => sum + statSync(path).size,
-      0
-    )
-    const outside =
-      types.outside > 0
-        ? `, leaving out ${types.outside} links that lead outside the workspace`
-        : ''
-    core.info(
-      `Shipping ${types.files.length} type declaration files (${Math.ceil(bytes / 1_048_576)} MB) and ${types.links.length} links from node_modules${outside}`
-    )
-  } else if (
-    tool.name === 'scanner' &&
-    existsSync(join(workingDirectory, 'package.json'))
-  ) {
-    core.info(
-      'No type declarations found in node_modules: the analysis of pull requests resolves fewer types'
-    )
-  }
+  const types = nodeTypes(tool, workingDirectory, workspace)
   const staging = join(temp, 'artifact')
   const staged = stageAnalysis(
     kept,
@@ -250,6 +205,92 @@ async function prepare(inputs: Inputs): Promise<void> {
     }
   )
   core.info(`Uploaded ${name} with ${staged.files.length} files`)
+}
+
+// Runs the build's Sonar tool in simulation mode, without the token, and reads the settings it wrote.
+async function simulate(
+  tool: BuildTool,
+  workingDirectory: string,
+  temp: string,
+  inputs: Inputs
+): Promise<Map<string, string>> {
+  const npm = tool.name === 'npm'
+  const dump = join(temp, npm ? 'dump.json' : 'dump.properties')
+  let simulation = simulationProperties(dump)
+  if (npm) {
+    const placeholder = join(temp, 'placeholder.jar')
+    writeFileSync(placeholder, '')
+    const home = join(temp, 'sonar-home')
+    mkdirSync(home)
+    simulation = npmSimulationProperties(
+      dump,
+      placeholder,
+      home,
+      inputs.hostUrl
+    )
+  }
+  const args = sonarBuildArguments(
+    tool,
+    inputs.buildGoals,
+    simulation,
+    inputs.buildArguments
+  )
+
+  core.info(
+    `Preparing the analysis of the ${tool.name} build in ${workingDirectory}`
+  )
+  const env = jobEnvironment()
+  delete env.SONAR_TOKEN
+  let errorOutput = ''
+  const collect = (data: Buffer): void => {
+    errorOutput += data.toString()
+  }
+  const exitCode = await exec(await executable(tool), args, {
+    cwd: workingDirectory,
+    env,
+    ignoreReturnCode: true,
+    // The npm scanner prints its errors to standard output.
+    listeners: npm ? { stdout: collect, stderr: collect } : { stderr: collect }
+  })
+  if (exitCode !== 0) throw new Error(buildFailure(tool, exitCode, errorOutput))
+  if (!existsSync(dump)) throw new Error(missingDump(tool))
+
+  // The dump holds the build's whole environment, so it never leaves this machine.
+  const text = readFileSync(dump, 'utf8')
+  rmSync(dump)
+  return resolveModuleBases(
+    npm ? parseNpmDump(text) : parseProperties(text),
+    workingDirectory
+  )
+}
+
+// The type declarations a Node project's analysis needs from node_modules.
+function nodeTypes(
+  tool: BuildTool,
+  workingDirectory: string,
+  workspace: string
+): TypeInformation {
+  if (tool.name !== 'scanner' && tool.name !== 'npm')
+    return { files: [], links: [], outside: 0 }
+  const types = typeInformation(workingDirectory, workspace)
+  if (types.files.length > 0 || types.links.length > 0) {
+    const bytes = types.files.reduce(
+      (sum, path) => sum + statSync(path).size,
+      0
+    )
+    const outside =
+      types.outside > 0
+        ? `, leaving out ${types.outside} links that lead outside the workspace`
+        : ''
+    core.info(
+      `Shipping ${types.files.length} type declaration files (${Math.ceil(bytes / 1_048_576)} MB) and ${types.links.length} links from node_modules${outside}`
+    )
+  } else if (existsSync(join(workingDirectory, 'package.json'))) {
+    core.info(
+      'No type declarations found in node_modules: the analysis of pull requests resolves fewer types'
+    )
+  }
+  return types
 }
 
 // Tells the analysis which pull request this build is for, in case several share its head.

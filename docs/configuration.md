@@ -263,40 +263,6 @@ workspace before the action:
 Don't let that runner build pull requests from forks, though. See
 [hardening your setup](security.md#hardening-your-setup).
 
-### Caching the Sonar scanner
-
-The action downloads Sonar's scanner every time it runs it. That's about 50 MB.
-The Sonar workflow always runs it. A build only runs it with the `scanner`
-[build tool](#inputs). The action keeps the download in
-`${{ runner.tool_cache }}/sonar-fork-analysis` and checks it against the pinned
-checksum before each use. So caching that directory is safe. In the build, add
-this before the action:
-
-```yaml
-- uses: actions/cache@v6
-  with:
-    path: ${{ runner.tool_cache }}/sonar-fork-analysis
-    key: sonar-scanner-${{ hashFiles('.github/workflows/*.yml') }}
-```
-
-The key changes whenever your workflows do, so a new version of the action saves
-its own copy. In the Sonar workflow, the workspace is still empty before the
-action runs, so that key can't be worked out there. Restore the newest copy
-instead:
-
-```yaml
-- uses: actions/cache/restore@v6
-  with:
-    path: ${{ runner.tool_cache }}/sonar-fork-analysis
-    key: sonar-scanner-
-    restore-keys: sonar-scanner-
-```
-
-The Sonar workflow can only restore what a build on your main branch saved. So
-Maven, Gradle and Node projects gain nothing, because their builds don't run the
-scanner. Self-hosted runners keep the directory between jobs without these
-steps.
-
 ## Supported runners
 
 | Runner      | Build workflow | Sonar workflow |

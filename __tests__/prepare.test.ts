@@ -14,6 +14,7 @@ import { dirname, join, sep } from 'node:path'
 import { nonRootIt } from '../__fixtures__/platform.js'
 import {
   artifactName,
+  npmSimulationProperties,
   simulationProperties,
   stageAnalysis,
   typeInformation
@@ -50,6 +51,34 @@ describe('simulationProperties', () => {
       '-Dsonar.scanner.dumpToFile=/tmp/dump',
       '-Dsonar.scanner.internal.dumpToFile=/tmp/dump'
     ])
+  })
+})
+
+describe('npmSimulationProperties', () => {
+  it('skips what the npm scanner would fetch, and names the server only when the input does', () => {
+    const skips = [
+      '-Dsonar.scanner.internal.dumpToFile=/tmp/dump.json',
+      '-Dsonar.scanner.internal.sqVersion=2025.1',
+      '-Dsonar.scanner.javaExePath=/tmp/placeholder.jar',
+      '-Dsonar.scanner.engineJarPath=/tmp/placeholder.jar',
+      '-Dsonar.userHome=/tmp/home'
+    ]
+    expect(
+      npmSimulationProperties(
+        '/tmp/dump.json',
+        '/tmp/placeholder.jar',
+        '/tmp/home',
+        ''
+      )
+    ).toEqual(skips)
+    expect(
+      npmSimulationProperties(
+        '/tmp/dump.json',
+        '/tmp/placeholder.jar',
+        '/tmp/home',
+        'https://sonar.example.org'
+      )
+    ).toEqual([...skips, '-Dsonar.host.url=https://sonar.example.org'])
   })
 })
 

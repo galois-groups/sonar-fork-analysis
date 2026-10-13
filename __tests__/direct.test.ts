@@ -9,6 +9,11 @@ import {
 const maven = { name: 'maven' as const, executable: './mvnw', prefix: [] }
 const gradle = { name: 'gradle' as const, executable: './gradlew', prefix: [] }
 const scanner = { name: 'scanner' as const, executable: '', prefix: [] }
+const npm = {
+  name: 'npm' as const,
+  executable: 'npx',
+  prefix: ['--yes', '@sonar/scan']
+}
 const properties = ['-Dsonar.projectKey=key']
 
 describe('sonarProperties', () => {
@@ -89,6 +94,35 @@ describe('sonarBuildArguments for the scanner', () => {
     )
   })
 
+  it('starts the npm scanner the same way, through npx', () => {
+    expect(
+      sonarBuildArguments(npm, [], properties, ['-Dsonar.projectName=App'])
+    ).toEqual([
+      '--yes',
+      '@sonar/scan',
+      '-Dsonar.projectKey=key',
+      '-Dsonar.projectName=App'
+    ])
+    expect(() => sonarBuildArguments(npm, ['test'], properties, [])).toThrow(
+      'build-goals does not apply'
+    )
+  })
+
+  it('tells an old npm scanner that a server refuses without a token to update', () => {
+    expect(buildFailure(npm, 1, 'compilation failed')).toBe(
+      'The npm scanner failed with exit code 1'
+    )
+    expect(
+      buildFailure(
+        npm,
+        1,
+        '[ERROR] Bootstrapper: An error occurred: AxiosError: Request failed with status code 401'
+      )
+    ).toMatch(
+      /^The npm scanner failed with exit code 1: before 5\.0\.0, @sonar\/scan downloads the engine .* Update it to 5\.0\.0 or later$/
+    )
+  })
+
   it('reports a failed scanner as such', () => {
     expect(buildFailure(scanner, 2, '')).toBe(
       'The Sonar scanner failed with exit code 2'
@@ -131,6 +165,12 @@ describe('missingAnalysis', () => {
   it('points scanner users at where it wrote its report', () => {
     expect(missingAnalysis(scanner)).toMatch(
       /left no report in the working directory: check that sonar\.projectBaseDir and sonar\.working\.directory/
+    )
+  })
+
+  it('names the npm scanner when it left no report', () => {
+    expect(missingAnalysis(npm)).toMatch(
+      /^The npm scanner succeeded but left no report in the working directory/
     )
   })
 

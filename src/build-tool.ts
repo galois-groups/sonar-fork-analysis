@@ -2,7 +2,7 @@ import { accessSync, constants, existsSync } from 'node:fs'
 import { join } from 'node:path'
 
 export type BuildTool = {
-  name: 'maven' | 'gradle' | 'scanner'
+  name: 'maven' | 'gradle' | 'npm' | 'scanner'
   // For the scanner, empty: there is no build to run, the action runs the scanner CLI.
   executable: string
   // Arguments that must precede the build's own, e.g. the wrapper script run through sh.
@@ -38,12 +38,13 @@ export function detectBuildTool(
   if (
     requested === 'maven' ||
     requested === 'gradle' ||
+    requested === 'npm' ||
     requested === 'scanner'
   ) {
     name = requested
   } else if (requested !== 'auto') {
     throw new Error(
-      `Unknown build tool '${requested}', expected one of: auto, maven, gradle, scanner`
+      `Unknown build tool '${requested}', expected one of: auto, maven, gradle, npm, scanner`
     )
   } else if (maven && gradle) {
     throw new Error(
@@ -52,15 +53,20 @@ export function detectBuildTool(
   } else if (maven || gradle) {
     // A Java project's frontend is analysed with build-tool: scanner, under its own project key.
     name = maven ? 'maven' : 'gradle'
+  } else if (existsSync(join(directory, 'package.json'))) {
+    name = 'npm'
   } else if (existsSync(join(directory, 'sonar-project.properties'))) {
     name = 'scanner'
   } else {
     throw new Error(
-      `No Maven or Gradle build or sonar-project.properties found in '${directory}', set the working-directory input`
+      `No Maven or Gradle build, package.json or sonar-project.properties found in '${directory}', set the working-directory input`
     )
   }
 
   if (name === 'scanner') return { name, executable: '', prefix: [] }
+  // The version the project installed, which its package.json can pin, or else the latest release.
+  if (name === 'npm')
+    return { name, executable: 'npx', prefix: ['--yes', '@sonar/scan'] }
   const wrapper = name === 'maven' ? 'mvnw' : 'gradlew'
   if (!existsSync(join(directory, wrapper))) {
     return { name, executable: name === 'maven' ? 'mvn' : 'gradle', prefix: [] }

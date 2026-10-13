@@ -59,11 +59,12 @@ import {
   artifactName,
   directArtifactName,
   missingDump,
+  npmSimulationProperties,
   simulationProperties,
   stageAnalysis,
   typeInformation
 } from './prepare.js'
-import { parseProperties } from './properties.js'
+import { parseNpmDump, parseProperties } from './properties.js'
 import { findNewReport, snapshotReports } from './report.js'
 import { installScanner } from './scanner.js'
 import {
@@ -149,11 +150,25 @@ async function prepare(inputs: Inputs): Promise<void> {
   const tool = detectBuildTool(workingDirectory, inputs.buildTool)
   warnWithoutSettings(tool, workingDirectory, inputs.buildArguments)
   const temp = tempDirectory()
-  const dump = join(temp, 'dump.properties')
+  const npm = tool.name === 'npm'
+  const dump = join(temp, npm ? 'dump.json' : 'dump.properties')
+  let simulation = simulationProperties(dump)
+  if (npm) {
+    const placeholder = join(temp, 'placeholder.jar')
+    writeFileSync(placeholder, '')
+    const home = join(temp, 'sonar-home')
+    mkdirSync(home)
+    simulation = npmSimulationProperties(
+      dump,
+      placeholder,
+      home,
+      inputs.hostUrl
+    )
+  }
   const args = sonarBuildArguments(
     tool,
     inputs.buildGoals,
-    simulationProperties(dump),
+    simulation,
     inputs.buildArguments
   )
 
@@ -163,17 +178,22 @@ async function prepare(inputs: Inputs): Promise<void> {
   const env = jobEnvironment()
   delete env.SONAR_TOKEN
   let errorOutput = ''
+  const collect = (data: Buffer): void => {
+    errorOutput += data.toString()
+  }
   const exitCode = await exec(await executable(tool), args, {
     cwd: workingDirectory,
     env,
     ignoreReturnCode: true,
-    listeners: { stderr: (data) => (errorOutput += data.toString()) }
+    // The npm scanner prints its errors to standard output.
+    listeners: npm ? { stdout: collect, stderr: collect } : { stderr: collect }
   })
   if (exitCode !== 0) throw new Error(buildFailure(tool, exitCode, errorOutput))
   if (!existsSync(dump)) throw new Error(missingDump(tool))
 
   // The dump holds the build's whole environment, so it never leaves this machine.
-  const settings = parseProperties(readFileSync(dump, 'utf8'))
+  const text = readFileSync(dump, 'utf8')
+  const settings = npm ? parseNpmDump(text) : parseProperties(text)
   rmSync(dump)
   const { kept, dropped, replaced, ignored } = filterSettings(settings)
   core.debug(`Settings the analysis sets itself: ${replaced.join(', ')}`)
@@ -197,7 +217,7 @@ async function prepare(inputs: Inputs): Promise<void> {
 
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd()
   const types =
-    tool.name === 'scanner'
+    tool.name === 'scanner' || npm
       ? typeInformation(workingDirectory, workspace)
       : { files: [], links: [], outside: 0 }
   if (types.files.length > 0 || types.links.length > 0) {
@@ -213,7 +233,7 @@ async function prepare(inputs: Inputs): Promise<void> {
       `Shipping ${types.files.length} type declaration files (${Math.ceil(bytes / 1_048_576)} MB) and ${types.links.length} links from node_modules${outside}`
     )
   } else if (
-    tool.name === 'scanner' &&
+    (tool.name === 'scanner' || npm) &&
     existsSync(join(workingDirectory, 'package.json'))
   ) {
     core.info(

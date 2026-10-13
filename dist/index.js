@@ -74007,6 +74007,17 @@ function simulationProperties(dumpFile) {
 		`-Dsonar.scanner.internal.dumpToFile=${dumpFile}`
 	];
 }
+function npmSimulationProperties(dumpFile, placeholder, userHome, hostUrl) {
+	const properties = [
+		`-Dsonar.scanner.internal.dumpToFile=${dumpFile}`,
+		"-Dsonar.scanner.internal.sqVersion=2025.1",
+		`-Dsonar.scanner.javaExePath=${placeholder}`,
+		`-Dsonar.scanner.engineJarPath=${placeholder}`,
+		`-Dsonar.userHome=${userHome}`
+	];
+	if (hostUrl) properties.push(`-Dsonar.host.url=${hostUrl}`);
+	return properties;
+}
 var ARTIFACT_PREFIX = "sonar-fork-analysis-";
 function artifactName(projectKey) {
 	if (!/^[\w.:-]+$/.test(projectKey)) throw new Error(`Invalid project key '${projectKey}'`);
@@ -74021,6 +74032,7 @@ var MINIMUM_PLUGIN = {
 };
 function missingDump(tool) {
 	if (tool.name === "scanner") return "The Sonar scanner succeeded but wrote no analysis settings";
+	if (tool.name === "npm") return "The npm scanner succeeded but wrote no analysis settings; the fork path needs @sonar/scan 4.2.7 or later";
 	return `The ${tool.name === "maven" ? "Maven" : "Gradle"} build succeeded but its Sonar plugin wrote no analysis settings; the fork path needs ${MINIMUM_PLUGIN[tool.name]} or later`;
 }
 function typeInformation(directory, workspace) {
@@ -74514,16 +74526,22 @@ function detectBuildTool(directory, requested = "auto") {
 	const maven = existsSync$1(join(directory, "pom.xml"));
 	const gradle = GRADLE_BUILD_FILES.some((file) => existsSync$1(join(directory, file)));
 	let name;
-	if (requested === "maven" || requested === "gradle" || requested === "scanner") name = requested;
-	else if (requested !== "auto") throw new Error(`Unknown build tool '${requested}', expected one of: auto, maven, gradle, scanner`);
+	if (requested === "maven" || requested === "gradle" || requested === "npm" || requested === "scanner") name = requested;
+	else if (requested !== "auto") throw new Error(`Unknown build tool '${requested}', expected one of: auto, maven, gradle, npm, scanner`);
 	else if (maven && gradle) throw new Error(`Both Maven and Gradle build files found in '${directory}', set the build-tool input`);
 	else if (maven || gradle) name = maven ? "maven" : "gradle";
+	else if (existsSync$1(join(directory, "package.json"))) name = "npm";
 	else if (existsSync$1(join(directory, "sonar-project.properties"))) name = "scanner";
-	else throw new Error(`No Maven or Gradle build or sonar-project.properties found in '${directory}', set the working-directory input`);
+	else throw new Error(`No Maven or Gradle build, package.json or sonar-project.properties found in '${directory}', set the working-directory input`);
 	if (name === "scanner") return {
 		name,
 		executable: "",
 		prefix: []
+	};
+	if (name === "npm") return {
+		name,
+		executable: "npx",
+		prefix: ["--yes", "@sonar/scan"]
 	};
 	const wrapper = name === "maven" ? "mvnw" : "gradlew";
 	if (!existsSync$1(join(directory, wrapper))) return {
@@ -74555,9 +74573,13 @@ function sonarProperties(settings) {
 	return properties;
 }
 function sonarBuildArguments(tool, goals, properties, buildArguments) {
-	if (tool.name === "scanner") {
+	if (tool.name === "scanner" || tool.name === "npm") {
 		if (goals.length > 0) throw new Error("build-goals does not apply when the action runs the scanner: build and test in your own steps before the action");
-		return [...properties, ...buildArguments];
+		return [
+			...tool.prefix,
+			...properties,
+			...buildArguments
+		];
 	}
 	const buildGoals = goals.length > 0 ? goals : DEFAULT_GOALS[tool.name];
 	if (tool.name === "maven") {
@@ -74586,10 +74608,11 @@ var TOOL_NAMES = {
 function buildFailure(tool, exitCode, errorOutput) {
 	if (tool.name === "gradle" && /Task 'sonar' (?:not found|is ambiguous)/.test(errorOutput)) return `The Gradle build has no 'sonar' task: apply the org.sonarqube plugin, see ${GRADLE_PLUGIN_GUIDE}`;
 	if (tool.name === "scanner") return `The Sonar scanner failed with exit code ${exitCode}`;
+	if (tool.name === "npm") return `The npm scanner failed with exit code ${exitCode}${/status code 401/.test(errorOutput) ? ": before 5.0.0, @sonar/scan downloads the engine from the server first, which this server refuses without a token. Update it to 5.0.0 or later" : ""}`;
 	return `The ${TOOL_NAMES[tool.name]} build failed with exit code ${exitCode}`;
 }
 function missingAnalysis(tool) {
-	if (tool.name === "scanner") return "The Sonar scanner succeeded but left no report in the working directory: check that sonar.projectBaseDir and sonar.working.directory stay inside it";
+	if (tool.name === "scanner" || tool.name === "npm") return `The ${tool.name === "npm" ? "npm" : "Sonar"} scanner succeeded but left no report in the working directory: check that sonar.projectBaseDir and sonar.working.directory stay inside it`;
 	const message = `The ${TOOL_NAMES[tool.name]} build succeeded but no Sonar analysis ran`;
 	return tool.name === "gradle" ? `${message}: apply the org.sonarqube plugin, see ${GRADLE_PLUGIN_GUIDE}` : `${message}: check that sonar.skip is not set`;
 }
@@ -74780,6 +74803,35 @@ var ESCAPES = {
 };
 function unescape(text) {
 	return text.replace(/\\(u[0-9a-fA-F]{4}|.)/g, (_, escaped) => escaped.length === 5 ? String.fromCodePoint(Number.parseInt(escaped.slice(1), 16)) : ESCAPES[escaped] ?? escaped);
+}
+function parseNpmDump(text) {
+	const fail = (reason) => {
+		throw new Error(`The npm scanner's dump is not in the expected format: ${reason}`);
+	};
+	let outer;
+	let inner;
+	try {
+		outer = JSON.parse(text);
+	} catch {
+		fail("not JSON");
+	}
+	const json = outer?.propertiesJSON;
+	if (typeof json !== "string") fail("no propertiesJSON string");
+	try {
+		inner = JSON.parse(json);
+	} catch {
+		fail("propertiesJSON is not JSON");
+	}
+	const list = inner?.scannerProperties;
+	if (!Array.isArray(list)) fail("no scannerProperties list");
+	const properties = /* @__PURE__ */ new Map();
+	for (const entry of list) {
+		const { key, value } = entry ?? {};
+		if (typeof key !== "string" || typeof value !== "string") fail("a setting that is not a key and a string value");
+		if (properties.has(key)) fail(`${key} appears twice`);
+		properties.set(key, value);
+	}
+	return properties;
 }
 //#endregion
 //#region src/report.ts
@@ -76586,21 +76638,37 @@ async function prepare(inputs) {
 	const tool = detectBuildTool(workingDirectory, inputs.buildTool);
 	warnWithoutSettings(tool, workingDirectory, inputs.buildArguments);
 	const temp = tempDirectory();
-	const dump = join(temp, "dump.properties");
-	const args = sonarBuildArguments(tool, inputs.buildGoals, simulationProperties(dump), inputs.buildArguments);
+	const npm = tool.name === "npm";
+	const dump = join(temp, npm ? "dump.json" : "dump.properties");
+	let simulation = simulationProperties(dump);
+	if (npm) {
+		const placeholder = join(temp, "placeholder.jar");
+		writeFileSync(placeholder, "");
+		const home = join(temp, "sonar-home");
+		mkdirSync(home);
+		simulation = npmSimulationProperties(dump, placeholder, home, inputs.hostUrl);
+	}
+	const args = sonarBuildArguments(tool, inputs.buildGoals, simulation, inputs.buildArguments);
 	info(`Preparing the analysis of the ${tool.name} build in ${workingDirectory}`);
 	const env = jobEnvironment();
 	delete env.SONAR_TOKEN;
 	let errorOutput = "";
+	const collect = (data) => {
+		errorOutput += data.toString();
+	};
 	const exitCode = await exec(await executable(tool), args, {
 		cwd: workingDirectory,
 		env,
 		ignoreReturnCode: true,
-		listeners: { stderr: (data) => errorOutput += data.toString() }
+		listeners: npm ? {
+			stdout: collect,
+			stderr: collect
+		} : { stderr: collect }
 	});
 	if (exitCode !== 0) throw new Error(buildFailure(tool, exitCode, errorOutput));
 	if (!existsSync$1(dump)) throw new Error(missingDump(tool));
-	const settings = parseProperties(readFileSync$1(dump, "utf8"));
+	const text = readFileSync$1(dump, "utf8");
+	const settings = npm ? parseNpmDump(text) : parseProperties(text);
 	rmSync(dump);
 	const { kept, dropped, replaced, ignored } = filterSettings(settings);
 	debug(`Settings the analysis sets itself: ${replaced.join(", ")}`);
@@ -76610,7 +76678,7 @@ async function prepare(inputs) {
 	if (left.size > 0) warning(`The analysis of pull requests leaves out these settings: ${[...left].join(", ")}. Pass them to the analysis job's build-arguments if it needs them.`);
 	if (settings.get("sonar.organization") && !inputs.organization) warning(`The build sets sonar.organization, which the analysis of pull requests takes only from the sonar-organization input: set it in both workflows.`);
 	const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
-	const types = tool.name === "scanner" ? typeInformation(workingDirectory, workspace) : {
+	const types = tool.name === "scanner" || npm ? typeInformation(workingDirectory, workspace) : {
 		files: [],
 		links: [],
 		outside: 0
@@ -76619,7 +76687,7 @@ async function prepare(inputs) {
 		const bytes = types.files.reduce((sum, path) => sum + statSync(path).size, 0);
 		const outside = types.outside > 0 ? `, leaving out ${types.outside} links that lead outside the workspace` : "";
 		info(`Shipping ${types.files.length} type declaration files (${Math.ceil(bytes / 1048576)} MB) and ${types.links.length} links from node_modules${outside}`);
-	} else if (tool.name === "scanner" && existsSync$1(join(workingDirectory, "package.json"))) info("No type declarations found in node_modules: the analysis of pull requests resolves fewer types");
+	} else if ((tool.name === "scanner" || npm) && existsSync$1(join(workingDirectory, "package.json"))) info("No type declarations found in node_modules: the analysis of pull requests resolves fewer types");
 	const staging = join(temp, "artifact");
 	const staged = stageAnalysis(kept, {
 		workspace,

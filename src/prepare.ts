@@ -48,6 +48,29 @@ export function simulationProperties(dumpFile: string): string[] {
   ]
 }
 
+// The npm scanner asks the server for its version, its Java and its engine before it writes the dump.
+// These settings skip all three from 5.0.0, so nothing runs and nothing contacts the server. Older
+// versions download the engine anyway, so they get the real server: SonarQube Cloud serves it without
+// a token.
+export function npmSimulationProperties(
+  dumpFile: string,
+  placeholder: string,
+  userHome: string,
+  hostUrl: string
+): string[] {
+  const properties = [
+    `-Dsonar.scanner.internal.dumpToFile=${dumpFile}`,
+    // Any version that serves Java and the engine, so it doesn't ask the server for its own.
+    '-Dsonar.scanner.internal.sqVersion=2025.1',
+    // Neither runs: the scanner exits once it has written the dump. The engine must be a file.
+    `-Dsonar.scanner.javaExePath=${placeholder}`,
+    `-Dsonar.scanner.engineJarPath=${placeholder}`,
+    `-Dsonar.userHome=${userHome}`
+  ]
+  if (hostUrl) properties.push(`-Dsonar.host.url=${hostUrl}`)
+  return properties
+}
+
 // Named after the project, so the build and the analysis agree without further settings, and every
 // project of a monorepo gets its own. Artifact names cannot hold ':', which project keys may.
 export const ARTIFACT_PREFIX = 'sonar-fork-analysis-'
@@ -73,6 +96,8 @@ const MINIMUM_PLUGIN = {
 export function missingDump(tool: BuildTool): string {
   if (tool.name === 'scanner')
     return 'The Sonar scanner succeeded but wrote no analysis settings'
+  if (tool.name === 'npm')
+    return 'The npm scanner succeeded but wrote no analysis settings; the fork path needs @sonar/scan 4.2.7 or later'
   return `The ${tool.name === 'maven' ? 'Maven' : 'Gradle'} build succeeded but its Sonar plugin wrote no analysis settings; the fork path needs ${MINIMUM_PLUGIN[tool.name]} or later`
 }
 

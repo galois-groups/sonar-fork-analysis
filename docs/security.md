@@ -58,14 +58,17 @@ about the pull request, not as a review of it.
 - Give the Sonar job only the permissions from the
   [setup](../README.md#3-add-the-sonar-workflow). Don't add other secrets to it.
   Only add the steps the [recipes](configuration.md#recipes) show.
-- Don't add caching to the Sonar job. Files it restores would be used in the job
-  that holds the token. The one exception is
-  [the Sonar scanner's directory](configuration.md#caching-the-sonar-scanner),
-  because the action checks the scanner against its checksum every time. Don't
-  give the job write access to the cache with `cache-mode` either.
+- Don't restore any cache in the Sonar job, not even the Sonar scanner's.
+  Restoring a cache can write files anywhere in the job, before anything checks
+  them. Builds on your main branch can save cache entries, so a compromised
+  dependency there could plant files for the job that holds the token.
+  [Cacheract](https://adnanthekhan.com/2024/12/21/cacheract-the-monster-in-your-build-cache/)
+  shows how. Set `cache-mode: none` on the Sonar job, so that no step can read a
+  cache.
   [By default](https://github.blog/changelog/2026-06-26-read-only-actions-cache-for-untrusted-triggers/),
-  GitHub only lets `workflow_run` jobs read the default branch's cache, so they
-  can't poison later builds.
+  GitHub already stops `workflow_run` jobs that follow a fork's pull request
+  from writing the default branch's cache, so they can't poison later builds
+  either.
 - Keep the Sonar token away from builds of pull requests from forks and from
   Dependabot. GitHub already withholds it from both. Don't undo that:
   - in a private repository, leave _Send secrets to workflows from pull

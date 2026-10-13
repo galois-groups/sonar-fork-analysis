@@ -51,8 +51,8 @@ export function scannerBuild(platform: string, arch: string): Build {
   return BUNDLED[`${platform}-${arch}`] ?? PLAIN
 }
 
-// Where the zip is kept between runs, documented for users to cache. Other jobs or a restored cache
-// may have put anything there: it's checked on every use, and nothing runs from it.
+// Where the zip is kept between runs, which self-hosted runners keep. Other jobs may have put anything
+// there: it's checked on every use, and nothing runs from it.
 export function keptZip(name: string): string {
   return join(
     process.env.RUNNER_TOOL_CACHE ?? tmpdir(),

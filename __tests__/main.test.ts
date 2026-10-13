@@ -602,8 +602,12 @@ describe('run in prepare mode', () => {
     writeFileSync(join(project, 'coverage', 'lcov.info'), 'TN:')
     mkdirSync(join(project, 'node_modules', 'express'), { recursive: true })
     writeFileSync(join(project, 'node_modules', 'express', 'index.d.ts'), '')
+    mkdirSync(join(project, 'packages', 'app'), { recursive: true })
     simulateNpm({
       'sonar.projectBaseDir': project,
+      // As written in the root sonar-project.properties: relative.
+      'sonar.modules': 'app',
+      'app.sonar.projectBaseDir': 'packages/app',
       'sonar.exclusions': 'node_modules/**,coverage/**',
       'sonar.javascript.lcov.reportPaths': 'coverage/lcov.info',
       'sonar.scanner.os': 'linux',
@@ -630,6 +634,8 @@ describe('run in prepare mode', () => {
       buildTool: 'npm',
       settings: {
         'sonar.projectBaseDir': '{workspace}',
+        'sonar.modules': 'app',
+        'app.sonar.projectBaseDir': '{workspace}/packages/app',
         'sonar.exclusions': 'node_modules/**,coverage/**',
         'sonar.javascript.lcov.reportPaths': 'coverage/lcov.info'
       }

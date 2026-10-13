@@ -60,9 +60,11 @@ import {
   directArtifactName,
   missingDump,
   npmSimulationProperties,
+  resolveModuleBases,
   simulationProperties,
   stageAnalysis,
-  typeInformation
+  typeInformation,
+  type TypeInformation
 } from './prepare.js'
 import { parseNpmDump, parseProperties } from './properties.js'
 import { findNewReport, snapshotReports } from './report.js'
@@ -150,6 +152,68 @@ async function prepare(inputs: Inputs): Promise<void> {
   const tool = detectBuildTool(workingDirectory, inputs.buildTool)
   warnWithoutSettings(tool, workingDirectory, inputs.buildArguments)
   const temp = tempDirectory()
+  const settings = await simulate(tool, workingDirectory, temp, inputs)
+  const { kept, dropped, replaced, ignored } = filterSettings(settings)
+  core.debug(`Settings the analysis sets itself: ${replaced.join(', ')}`)
+  core.info(
+    `Ignored ${ignored.length} environment variables and JVM properties`
+  )
+  // Maven repeats command-line and parent settings in every module.
+  const tree = moduleTree(settings)
+  const left = new Set(dropped.map((key) => tree.split(key).bareKey))
+  if (left.size > 0)
+    core.warning(
+      `The analysis of pull requests leaves out these settings: ${[...left].join(', ')}. Pass them to the analysis job's build-arguments if it needs them.`
+    )
+
+  // The analysis takes the organization only from its own input, so one set only in the build would
+  // send the fork path's analysis to no organization at all.
+  if (settings.get('sonar.organization') && !inputs.organization)
+    core.warning(
+      `The build sets sonar.organization, which the analysis of pull requests takes only from the sonar-organization input: set it in both workflows.`
+    )
+
+  const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd()
+  const types = nodeTypes(tool, workingDirectory, workspace)
+  const staging = join(temp, 'artifact')
+  const staged = stageAnalysis(
+    kept,
+    {
+      workspace,
+      home: homedir()
+    },
+    staging,
+    tool.name,
+    pullRequestNumber(),
+    types.files,
+    types.links
+  )
+  for (const warning of staged.warnings) core.warning(warning)
+
+  if (!process.env.ACTIONS_RUNTIME_TOKEN) {
+    core.warning(
+      `Not running in GitHub Actions, so ${name} was not uploaded: ${staging}`
+    )
+    return
+  }
+  await new DefaultArtifactClient().uploadArtifact(
+    name,
+    staged.files,
+    staging,
+    {
+      retentionDays: 1
+    }
+  )
+  core.info(`Uploaded ${name} with ${staged.files.length} files`)
+}
+
+// Runs the build's Sonar tool in simulation mode, without the token, and reads the settings it wrote.
+async function simulate(
+  tool: BuildTool,
+  workingDirectory: string,
+  temp: string,
+  inputs: Inputs
+): Promise<Map<string, string>> {
   const npm = tool.name === 'npm'
   const dump = join(temp, npm ? 'dump.json' : 'dump.properties')
   let simulation = simulationProperties(dump)
@@ -193,33 +257,19 @@ async function prepare(inputs: Inputs): Promise<void> {
 
   // The dump holds the build's whole environment, so it never leaves this machine.
   const text = readFileSync(dump, 'utf8')
-  const settings = npm ? parseNpmDump(text) : parseProperties(text)
   rmSync(dump)
-  const { kept, dropped, replaced, ignored } = filterSettings(settings)
-  core.debug(`Settings the analysis sets itself: ${replaced.join(', ')}`)
-  core.info(
-    `Ignored ${ignored.length} environment variables and JVM properties`
-  )
-  // Maven repeats command-line and parent settings in every module.
-  const tree = moduleTree(settings)
-  const left = new Set(dropped.map((key) => tree.split(key).bareKey))
-  if (left.size > 0)
-    core.warning(
-      `The analysis of pull requests leaves out these settings: ${[...left].join(', ')}. Pass them to the analysis job's build-arguments if it needs them.`
-    )
+  return resolveModuleBases(npm ? parseNpmDump(text) : parseProperties(text))
+}
 
-  // The analysis takes the organization only from its own input, so one set only in the build would
-  // send the fork path's analysis to no organization at all.
-  if (settings.get('sonar.organization') && !inputs.organization)
-    core.warning(
-      `The build sets sonar.organization, which the analysis of pull requests takes only from the sonar-organization input: set it in both workflows.`
-    )
-
-  const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd()
-  const types =
-    tool.name === 'scanner' || npm
-      ? typeInformation(workingDirectory, workspace)
-      : { files: [], links: [], outside: 0 }
+// The type declarations a Node project's analysis needs from node_modules.
+function nodeTypes(
+  tool: BuildTool,
+  workingDirectory: string,
+  workspace: string
+): TypeInformation {
+  if (tool.name !== 'scanner' && tool.name !== 'npm')
+    return { files: [], links: [], outside: 0 }
+  const types = typeInformation(workingDirectory, workspace)
   if (types.files.length > 0 || types.links.length > 0) {
     const bytes = types.files.reduce(
       (sum, path) => sum + statSync(path).size,
@@ -232,44 +282,12 @@ async function prepare(inputs: Inputs): Promise<void> {
     core.info(
       `Shipping ${types.files.length} type declaration files (${Math.ceil(bytes / 1_048_576)} MB) and ${types.links.length} links from node_modules${outside}`
     )
-  } else if (
-    (tool.name === 'scanner' || npm) &&
-    existsSync(join(workingDirectory, 'package.json'))
-  ) {
+  } else if (existsSync(join(workingDirectory, 'package.json'))) {
     core.info(
       'No type declarations found in node_modules: the analysis of pull requests resolves fewer types'
     )
   }
-  const staging = join(temp, 'artifact')
-  const staged = stageAnalysis(
-    kept,
-    {
-      workspace,
-      home: homedir()
-    },
-    staging,
-    tool.name,
-    pullRequestNumber(),
-    types.files,
-    types.links
-  )
-  for (const warning of staged.warnings) core.warning(warning)
-
-  if (!process.env.ACTIONS_RUNTIME_TOKEN) {
-    core.warning(
-      `Not running in GitHub Actions, so ${name} was not uploaded: ${staging}`
-    )
-    return
-  }
-  await new DefaultArtifactClient().uploadArtifact(
-    name,
-    staged.files,
-    staging,
-    {
-      retentionDays: 1
-    }
-  )
-  core.info(`Uploaded ${name} with ${staged.files.length} files`)
+  return types
 }
 
 // Tells the analysis which pull request this build is for, in case several share its head.

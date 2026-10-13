@@ -158,9 +158,11 @@ action after your own build and test steps.
 For a Node project, the action runs Sonar's npm scanner (`@sonar/scan`) with
 `npx`. The action recognises these projects by their `package.json`. The scanner
 takes the project's name and version from it. It finds a coverage report in
-`coverage/lcov.info` by itself. If there's also a `sonar-project.properties`, it
-reads that too. If your `package.json` lists `@sonar/scan`, the action runs that
-version. Otherwise it runs the latest.
+`coverage/lcov.info` by itself. If there's also a `sonar-project.properties`
+next to it, it reads that too. It reads no other settings file, so in a
+monorepo, each package's settings go in that file, under the package's module
+prefix: `app.sonar.tests=test`. If your `package.json` lists `@sonar/scan`, the
+action runs that version. Otherwise it runs the latest.
 
 ```yaml
 steps:

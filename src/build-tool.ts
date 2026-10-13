@@ -29,40 +29,7 @@ export function detectBuildTool(
   directory: string,
   requested = 'auto'
 ): BuildTool {
-  const maven = existsSync(join(directory, 'pom.xml'))
-  const gradle = GRADLE_BUILD_FILES.some((file) =>
-    existsSync(join(directory, file))
-  )
-
-  let name: BuildTool['name']
-  if (
-    requested === 'maven' ||
-    requested === 'gradle' ||
-    requested === 'npm' ||
-    requested === 'scanner'
-  ) {
-    name = requested
-  } else if (requested !== 'auto') {
-    throw new Error(
-      `Unknown build tool '${requested}', expected one of: auto, maven, gradle, npm, scanner`
-    )
-  } else if (maven && gradle) {
-    throw new Error(
-      `Both Maven and Gradle build files found in '${directory}', set the build-tool input`
-    )
-  } else if (maven || gradle) {
-    // A Java project's frontend is analysed with build-tool: scanner, under its own project key.
-    name = maven ? 'maven' : 'gradle'
-  } else if (existsSync(join(directory, 'package.json'))) {
-    name = 'npm'
-  } else if (existsSync(join(directory, 'sonar-project.properties'))) {
-    name = 'scanner'
-  } else {
-    throw new Error(
-      `No Maven or Gradle build, package.json or sonar-project.properties found in '${directory}', set the working-directory input`
-    )
-  }
-
+  const name = requested === 'auto' ? detectName(directory) : checked(requested)
   if (name === 'scanner') return { name, executable: '', prefix: [] }
   // The version the project installed, which its package.json can pin, or else the latest release.
   if (name === 'npm')
@@ -75,4 +42,36 @@ export function detectBuildTool(
   return isExecutable(join(directory, wrapper))
     ? { name, executable: `./${wrapper}`, prefix: [] }
     : { name, executable: 'sh', prefix: [wrapper] }
+}
+
+function checked(requested: string): BuildTool['name'] {
+  if (
+    requested === 'maven' ||
+    requested === 'gradle' ||
+    requested === 'npm' ||
+    requested === 'scanner'
+  )
+    return requested
+  throw new Error(
+    `Unknown build tool '${requested}', expected one of: auto, maven, gradle, npm, scanner`
+  )
+}
+
+function detectName(directory: string): BuildTool['name'] {
+  const maven = existsSync(join(directory, 'pom.xml'))
+  const gradle = GRADLE_BUILD_FILES.some((file) =>
+    existsSync(join(directory, file))
+  )
+  if (maven && gradle)
+    throw new Error(
+      `Both Maven and Gradle build files found in '${directory}', set the build-tool input`
+    )
+  // A Java project's frontend is analysed with build-tool: npm or scanner, under its own project key.
+  if (maven) return 'maven'
+  if (gradle) return 'gradle'
+  if (existsSync(join(directory, 'package.json'))) return 'npm'
+  if (existsSync(join(directory, 'sonar-project.properties'))) return 'scanner'
+  throw new Error(
+    `No Maven or Gradle build, package.json or sonar-project.properties found in '${directory}', set the working-directory input`
+  )
 }

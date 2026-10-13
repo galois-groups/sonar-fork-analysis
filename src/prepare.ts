@@ -71,6 +71,29 @@ export function npmSimulationProperties(
   return properties
 }
 
+// The npm scanner passes a module's sonar.projectBaseDir as written, often relative. The engine resolves
+// it against the parent module's base directory, so this does the same before the paths are staged.
+export function resolveModuleBases(
+  settings: Map<string, string>
+): Map<string, string> {
+  const tree = moduleTree(settings)
+  const resolved = new Map(settings)
+  const bases = new Map<string, string>()
+  for (const prefix of tree.prefixes) {
+    const key = tree.keyOf(prefix, 'sonar.projectBaseDir')
+    const value = key === undefined ? undefined : settings.get(key)
+    const parent = bases.get(tree.parents.get(prefix) ?? '')
+    if (value === undefined) continue
+    const base =
+      prefix === '' || isAbsolute(value) || parent === undefined
+        ? value
+        : resolve(parent, value)
+    bases.set(prefix, base)
+    if (key !== undefined) resolved.set(key, base)
+  }
+  return resolved
+}
+
 // Named after the project, so the build and the analysis agree without further settings, and every
 // project of a monorepo gets its own. Artifact names cannot hold ':', which project keys may.
 export const ARTIFACT_PREFIX = 'sonar-fork-analysis-'

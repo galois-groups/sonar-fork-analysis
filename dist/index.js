@@ -73938,6 +73938,7 @@ function byCodeUnit(a, b) {
 function moduleTree(settings) {
 	const assigned = /* @__PURE__ */ new Map();
 	const prefixes = [];
+	const parents = /* @__PURE__ */ new Map();
 	const seen = /* @__PURE__ */ new Set();
 	const walk = (prefix, keys) => {
 		prefixes.push(prefix);
@@ -73955,6 +73956,7 @@ function moduleTree(settings) {
 				own.set(relative.slice(module.length + 1), original);
 				keys.delete(relative);
 			}
+			parents.set(nested, prefix);
 			walk(nested, own);
 		}
 		for (const [relative, original] of keys) assigned.set(original, {
@@ -73970,6 +73972,7 @@ function moduleTree(settings) {
 	}
 	return {
 		prefixes,
+		parents,
 		split: (key) => assigned.get(key) ?? {
 			prefix: "",
 			bareKey: key
@@ -74017,6 +74020,21 @@ function npmSimulationProperties(dumpFile, placeholder, userHome, hostUrl) {
 	];
 	if (hostUrl) properties.push(`-Dsonar.host.url=${hostUrl}`);
 	return properties;
+}
+function resolveModuleBases(settings) {
+	const tree = moduleTree(settings);
+	const resolved = new Map(settings);
+	const bases = /* @__PURE__ */ new Map();
+	for (const prefix of tree.prefixes) {
+		const key = tree.keyOf(prefix, "sonar.projectBaseDir");
+		const value = key === void 0 ? void 0 : settings.get(key);
+		const parent = bases.get(tree.parents.get(prefix) ?? "");
+		if (value === void 0) continue;
+		const base = prefix === "" || isAbsolute(value) || parent === void 0 ? value : resolve$1(parent, value);
+		bases.set(prefix, base);
+		if (key !== void 0) resolved.set(key, base);
+	}
+	return resolved;
 }
 var ARTIFACT_PREFIX = "sonar-fork-analysis-";
 function artifactName(projectKey) {
@@ -74523,16 +74541,7 @@ function isExecutable(path) {
 	}
 }
 function detectBuildTool(directory, requested = "auto") {
-	const maven = existsSync$1(join(directory, "pom.xml"));
-	const gradle = GRADLE_BUILD_FILES.some((file) => existsSync$1(join(directory, file)));
-	let name;
-	if (requested === "maven" || requested === "gradle" || requested === "npm" || requested === "scanner") name = requested;
-	else if (requested !== "auto") throw new Error(`Unknown build tool '${requested}', expected one of: auto, maven, gradle, npm, scanner`);
-	else if (maven && gradle) throw new Error(`Both Maven and Gradle build files found in '${directory}', set the build-tool input`);
-	else if (maven || gradle) name = maven ? "maven" : "gradle";
-	else if (existsSync$1(join(directory, "package.json"))) name = "npm";
-	else if (existsSync$1(join(directory, "sonar-project.properties"))) name = "scanner";
-	else throw new Error(`No Maven or Gradle build, package.json or sonar-project.properties found in '${directory}', set the working-directory input`);
+	const name = requested === "auto" ? detectName(directory) : checked(requested);
 	if (name === "scanner") return {
 		name,
 		executable: "",
@@ -74558,6 +74567,20 @@ function detectBuildTool(directory, requested = "auto") {
 		executable: "sh",
 		prefix: [wrapper]
 	};
+}
+function checked(requested) {
+	if (requested === "maven" || requested === "gradle" || requested === "npm" || requested === "scanner") return requested;
+	throw new Error(`Unknown build tool '${requested}', expected one of: auto, maven, gradle, npm, scanner`);
+}
+function detectName(directory) {
+	const maven = existsSync$1(join(directory, "pom.xml"));
+	const gradle = GRADLE_BUILD_FILES.some((file) => existsSync$1(join(directory, file)));
+	if (maven && gradle) throw new Error(`Both Maven and Gradle build files found in '${directory}', set the build-tool input`);
+	if (maven) return "maven";
+	if (gradle) return "gradle";
+	if (existsSync$1(join(directory, "package.json"))) return "npm";
+	if (existsSync$1(join(directory, "sonar-project.properties"))) return "scanner";
+	throw new Error(`No Maven or Gradle build, package.json or sonar-project.properties found in '${directory}', set the working-directory input`);
 }
 //#endregion
 //#region src/direct.ts
@@ -76638,6 +76661,30 @@ async function prepare(inputs) {
 	const tool = detectBuildTool(workingDirectory, inputs.buildTool);
 	warnWithoutSettings(tool, workingDirectory, inputs.buildArguments);
 	const temp = tempDirectory();
+	const settings = await simulate(tool, workingDirectory, temp, inputs);
+	const { kept, dropped, replaced, ignored } = filterSettings(settings);
+	debug(`Settings the analysis sets itself: ${replaced.join(", ")}`);
+	info(`Ignored ${ignored.length} environment variables and JVM properties`);
+	const tree = moduleTree(settings);
+	const left = new Set(dropped.map((key) => tree.split(key).bareKey));
+	if (left.size > 0) warning(`The analysis of pull requests leaves out these settings: ${[...left].join(", ")}. Pass them to the analysis job's build-arguments if it needs them.`);
+	if (settings.get("sonar.organization") && !inputs.organization) warning(`The build sets sonar.organization, which the analysis of pull requests takes only from the sonar-organization input: set it in both workflows.`);
+	const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
+	const types = nodeTypes(tool, workingDirectory, workspace);
+	const staging = join(temp, "artifact");
+	const staged = stageAnalysis(kept, {
+		workspace,
+		home: homedir()
+	}, staging, tool.name, pullRequestNumber(), types.files, types.links);
+	for (const warning$1 of staged.warnings) warning(warning$1);
+	if (!process.env.ACTIONS_RUNTIME_TOKEN) {
+		warning(`Not running in GitHub Actions, so ${name} was not uploaded: ${staging}`);
+		return;
+	}
+	await new DefaultArtifactClient().uploadArtifact(name, staged.files, staging, { retentionDays: 1 });
+	info(`Uploaded ${name} with ${staged.files.length} files`);
+}
+async function simulate(tool, workingDirectory, temp, inputs) {
 	const npm = tool.name === "npm";
 	const dump = join(temp, npm ? "dump.json" : "dump.properties");
 	let simulation = simulationProperties(dump);
@@ -76668,38 +76715,22 @@ async function prepare(inputs) {
 	if (exitCode !== 0) throw new Error(buildFailure(tool, exitCode, errorOutput));
 	if (!existsSync$1(dump)) throw new Error(missingDump(tool));
 	const text = readFileSync$1(dump, "utf8");
-	const settings = npm ? parseNpmDump(text) : parseProperties(text);
 	rmSync(dump);
-	const { kept, dropped, replaced, ignored } = filterSettings(settings);
-	debug(`Settings the analysis sets itself: ${replaced.join(", ")}`);
-	info(`Ignored ${ignored.length} environment variables and JVM properties`);
-	const tree = moduleTree(settings);
-	const left = new Set(dropped.map((key) => tree.split(key).bareKey));
-	if (left.size > 0) warning(`The analysis of pull requests leaves out these settings: ${[...left].join(", ")}. Pass them to the analysis job's build-arguments if it needs them.`);
-	if (settings.get("sonar.organization") && !inputs.organization) warning(`The build sets sonar.organization, which the analysis of pull requests takes only from the sonar-organization input: set it in both workflows.`);
-	const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
-	const types = tool.name === "scanner" || npm ? typeInformation(workingDirectory, workspace) : {
+	return resolveModuleBases(npm ? parseNpmDump(text) : parseProperties(text));
+}
+function nodeTypes(tool, workingDirectory, workspace) {
+	if (tool.name !== "scanner" && tool.name !== "npm") return {
 		files: [],
 		links: [],
 		outside: 0
 	};
+	const types = typeInformation(workingDirectory, workspace);
 	if (types.files.length > 0 || types.links.length > 0) {
 		const bytes = types.files.reduce((sum, path) => sum + statSync(path).size, 0);
 		const outside = types.outside > 0 ? `, leaving out ${types.outside} links that lead outside the workspace` : "";
 		info(`Shipping ${types.files.length} type declaration files (${Math.ceil(bytes / 1048576)} MB) and ${types.links.length} links from node_modules${outside}`);
-	} else if ((tool.name === "scanner" || npm) && existsSync$1(join(workingDirectory, "package.json"))) info("No type declarations found in node_modules: the analysis of pull requests resolves fewer types");
-	const staging = join(temp, "artifact");
-	const staged = stageAnalysis(kept, {
-		workspace,
-		home: homedir()
-	}, staging, tool.name, pullRequestNumber(), types.files, types.links);
-	for (const warning$2 of staged.warnings) warning(warning$2);
-	if (!process.env.ACTIONS_RUNTIME_TOKEN) {
-		warning(`Not running in GitHub Actions, so ${name} was not uploaded: ${staging}`);
-		return;
-	}
-	await new DefaultArtifactClient().uploadArtifact(name, staged.files, staging, { retentionDays: 1 });
-	info(`Uploaded ${name} with ${staged.files.length} files`);
+	} else if (existsSync$1(join(workingDirectory, "package.json"))) info("No type declarations found in node_modules: the analysis of pull requests resolves fewer types");
+	return types;
 }
 function pullRequestNumber() {
 	const eventPath = process.env.GITHUB_EVENT_PATH;
@@ -76841,7 +76872,7 @@ async function analyzeCommit(inputs, context, origin, workspace, found) {
 	];
 	if (existsSync$1(join(artifact, "home"))) cpSync(join(artifact, "home"), home, { recursive: true });
 	if (choiceWarning) warnings.push(choiceWarning);
-	for (const warning$1 of warnings) warning(warning$1);
+	for (const warning$2 of warnings) warning(warning$2);
 	const properties = resolved.properties;
 	if (!properties.has("sonar.projectBaseDir")) properties.set("sonar.projectBaseDir", workspace);
 	const languages = await serverLanguages(languagesHost(inputs.hostUrl, inputs.buildArguments), inputs.token);

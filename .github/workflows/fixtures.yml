@@ -192,6 +192,12 @@ jobs:
   analyze:
     name: 'Fork path'
     needs: prepare
+    # What the shared workflow's analysis job asks for. A pull request from a fork gets them read-only.
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+      statuses: write
     uses: $/.github/workflows/fork-path.yml
     with:
       mode: analyze

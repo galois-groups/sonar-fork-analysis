@@ -15,11 +15,18 @@ on:
     secrets:
       SONAR_TOKEN:
         required: false
+# A called workflow can only lower what its caller grants: both callers grant the analysis job's set.
+permissions: {}
 jobs:
-  # Takes the calling job's permissions: Fixtures Sonar's let the action post commit statuses.
   analyze:
     name: 'Analyse ${{ matrix.fixture }}'
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+      # Lets the action report the analysis on the analysed commit, where the pull request shows it.
+      statuses: write
     strategy:
       fail-fast: false
       matrix:

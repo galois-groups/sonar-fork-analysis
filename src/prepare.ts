@@ -82,7 +82,7 @@ export function resolveModuleBases(
   const tree = moduleTree(settings)
   const resolved = new Map(settings)
   const bases = new Map<string, string>()
-  const derived: [string, string][] = []
+  const derived: string[] = []
   for (const prefix of tree.prefixes) {
     const key = tree.keyOf(prefix, 'sonar.projectBaseDir')
     const value = key === undefined ? undefined : settings.get(key)
@@ -90,24 +90,38 @@ export function resolveModuleBases(
     const parent =
       parentPrefix === undefined ? workingDirectory : bases.get(parentPrefix)
     if (parent === undefined || (prefix === '' && value === undefined)) continue
-    const base =
-      value === undefined
-        ? join(parent, prefix.slice((parentPrefix ?? '').length, -1))
-        : resolve(parent, value)
+    const base = moduleBase(prefix, parentPrefix ?? '', parent, value)
     bases.set(prefix, base)
-    if (key === undefined) {
-      derived.push([prefix, `${prefix}sonar.projectBaseDir`])
-      resolved.set(`${prefix}sonar.projectBaseDir`, base)
-    } else resolved.set(key, base)
+    if (key === undefined) derived.push(prefix)
+    resolved.set(key ?? `${prefix}sonar.projectBaseDir`, base)
   }
-  // A new key could go to another module than meant, as module ids may hold dots.
-  const check = moduleTree(resolved)
-  for (const [prefix, key] of derived)
-    if (check.keyOf(prefix, 'sonar.projectBaseDir') !== key)
+  checkDerived(resolved, derived)
+  return resolved
+}
+
+// The engine resolves a module's base against its parent's, or puts the module under it by its id.
+function moduleBase(
+  prefix: string,
+  parentPrefix: string,
+  parent: string,
+  value?: string
+): string {
+  return value === undefined
+    ? join(parent, prefix.slice(parentPrefix.length, -1))
+    : resolve(parent, value)
+}
+
+// A new key could go to another module than meant, as module ids may hold dots.
+function checkDerived(settings: Map<string, string>, prefixes: string[]): void {
+  const tree = moduleTree(settings)
+  for (const prefix of prefixes)
+    if (
+      tree.keyOf(prefix, 'sonar.projectBaseDir') !==
+      `${prefix}sonar.projectBaseDir`
+    )
       throw new Error(
         `Could not give module ${prefix.slice(0, -1)} its base directory`
       )
-  return resolved
 }
 
 // Named after the project, so the build and the analysis agree without further settings, and every

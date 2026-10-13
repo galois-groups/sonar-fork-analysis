@@ -74032,16 +74032,20 @@ function resolveModuleBases(settings, workingDirectory) {
 		const parentPrefix = tree.parents.get(prefix);
 		const parent = parentPrefix === void 0 ? workingDirectory : bases.get(parentPrefix);
 		if (parent === void 0 || prefix === "" && value === void 0) continue;
-		const base = value === void 0 ? join(parent, prefix.slice((parentPrefix ?? "").length, -1)) : resolve$1(parent, value);
+		const base = moduleBase(prefix, parentPrefix ?? "", parent, value);
 		bases.set(prefix, base);
-		if (key === void 0) {
-			derived.push([prefix, `${prefix}sonar.projectBaseDir`]);
-			resolved.set(`${prefix}sonar.projectBaseDir`, base);
-		} else resolved.set(key, base);
+		if (key === void 0) derived.push(prefix);
+		resolved.set(key ?? `${prefix}sonar.projectBaseDir`, base);
 	}
-	const check = moduleTree(resolved);
-	for (const [prefix, key] of derived) if (check.keyOf(prefix, "sonar.projectBaseDir") !== key) throw new Error(`Could not give module ${prefix.slice(0, -1)} its base directory`);
+	checkDerived(resolved, derived);
 	return resolved;
+}
+function moduleBase(prefix, parentPrefix, parent, value) {
+	return value === void 0 ? join(parent, prefix.slice(parentPrefix.length, -1)) : resolve$1(parent, value);
+}
+function checkDerived(settings, prefixes) {
+	const tree = moduleTree(settings);
+	for (const prefix of prefixes) if (tree.keyOf(prefix, "sonar.projectBaseDir") !== `${prefix}sonar.projectBaseDir`) throw new Error(`Could not give module ${prefix.slice(0, -1)} its base directory`);
 }
 var ARTIFACT_PREFIX = "sonar-fork-analysis-";
 function artifactName(projectKey) {

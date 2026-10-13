@@ -32,6 +32,8 @@ jobs:
             name: Npm
           - fixture: pnpm
             name: Pnpm
+          - fixture: infra
+            name: Infra
     # Without the token, e.g. on Dependabot's pull requests, Fixtures skips the analysis.
     env:
       HAS_SONAR_TOKEN: ${{ secrets.SONAR_TOKEN != '' }}

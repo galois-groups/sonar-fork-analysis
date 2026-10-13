@@ -1,5 +1,5 @@
 # For Sonar's analysis of workflows. It never runs: GitHub only runs the repository's root workflows.
-name: "Check"
+name: 'Check'
 
 on: push
 

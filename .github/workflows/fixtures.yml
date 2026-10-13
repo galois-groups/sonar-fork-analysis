@@ -35,6 +35,8 @@ jobs:
             name: Npm
           - fixture: pnpm
             name: Pnpm
+          - fixture: infra
+            name: Infra
     env:
       # Forks and Dependabot get no Actions secrets, and a forced direct analysis fails without the
       # token, so skip it there.
@@ -127,7 +129,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        fixture: [maven, gradle, npm, pnpm]
+        fixture: [maven, gradle, npm, pnpm, infra]
     steps:
       # The head, like analyze checks out, so the shipped build output matches the analysed sources.
       - name: 'Checkout project'
@@ -278,7 +280,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        fixture: [maven, gradle, npm, pnpm]
+        fixture: [maven, gradle, npm, pnpm, infra]
     env:
       HAS_SONAR_TOKEN: ${{ secrets.SONAR_TOKEN != '' }}
     steps:
@@ -307,5 +309,5 @@ jobs:
           COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
           # The fork path only analyses the languages the action is tested with.
           DIRECT_ONLY:
-            ${{ matrix.fixture == 'npm' && 'packages/app/src/decoy.py' || '' }}
+            ${{ matrix.fixture == 'infra' && 'python/decoy.py' || '' }}
           LANGUAGES: java,kotlin,js,ts,css,web,xml,yaml,json,docker,terraform,azureresourcemanager,shell,powershell

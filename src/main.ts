@@ -258,7 +258,10 @@ async function simulate(
   // The dump holds the build's whole environment, so it never leaves this machine.
   const text = readFileSync(dump, 'utf8')
   rmSync(dump)
-  return resolveModuleBases(npm ? parseNpmDump(text) : parseProperties(text))
+  return resolveModuleBases(
+    npm ? parseNpmDump(text) : parseProperties(text),
+    workingDirectory
+  )
 }
 
 // The type declarations a Node project's analysis needs from node_modules.

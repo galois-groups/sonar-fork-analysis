@@ -266,9 +266,8 @@ Don't let that runner build pull requests from forks, though. See
 ### Caching the Sonar scanner
 
 The action downloads Sonar's scanner every time it runs it: in the Sonar
-workflow, and in the build of
-[other projects](../README.md#if-you-run-your-build-everything-else). That's
-about 50 MB. The action keeps the download in
+workflow, and in the build of projects with a `sonar-project.properties` and no
+`package.json`. That's about 50 MB. The action keeps the download in
 `${{ runner.tool_cache }}/sonar-fork-analysis` and checks it against the pinned
 checksum before each use. So caching that directory is safe. In the build, add
 this before the action:
@@ -294,8 +293,8 @@ instead:
 ```
 
 The Sonar workflow can only restore what a build on your main branch saved. Only
-builds of other projects run the scanner, so Maven and Gradle projects gain
-nothing. Self-hosted runners keep the directory between jobs without these
+the builds of those projects run the scanner, so Maven, Gradle and Node projects
+gain nothing. Self-hosted runners keep the directory between jobs without these
 steps.
 
 ## Supported runners
@@ -316,7 +315,7 @@ Tested and untested mean the same as for
 
 ## Limitations
 
-- When the action runs the scanner, it reads settings only from
+- With `build-tool: scanner`, the action reads settings only from
   `sonar-project.properties` and `build-arguments`. It doesn't guess any from
   `package.json`, unlike Sonar's npm scanner. So set your coverage report path
   yourself.

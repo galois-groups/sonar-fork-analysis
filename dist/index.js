@@ -74021,19 +74021,26 @@ function npmSimulationProperties(dumpFile, placeholder, userHome, hostUrl) {
 	if (hostUrl) properties.push(`-Dsonar.host.url=${hostUrl}`);
 	return properties;
 }
-function resolveModuleBases(settings) {
+function resolveModuleBases(settings, workingDirectory) {
 	const tree = moduleTree(settings);
 	const resolved = new Map(settings);
 	const bases = /* @__PURE__ */ new Map();
+	const derived = [];
 	for (const prefix of tree.prefixes) {
 		const key = tree.keyOf(prefix, "sonar.projectBaseDir");
 		const value = key === void 0 ? void 0 : settings.get(key);
-		const parent = bases.get(tree.parents.get(prefix) ?? "");
-		if (value === void 0) continue;
-		const base = prefix === "" || isAbsolute(value) || parent === void 0 ? value : resolve$1(parent, value);
+		const parentPrefix = tree.parents.get(prefix);
+		const parent = parentPrefix === void 0 ? workingDirectory : bases.get(parentPrefix);
+		if (parent === void 0 || prefix === "" && value === void 0) continue;
+		const base = value === void 0 ? join(parent, prefix.slice((parentPrefix ?? "").length, -1)) : resolve$1(parent, value);
 		bases.set(prefix, base);
-		if (key !== void 0) resolved.set(key, base);
+		if (key === void 0) {
+			derived.push([prefix, `${prefix}sonar.projectBaseDir`]);
+			resolved.set(`${prefix}sonar.projectBaseDir`, base);
+		} else resolved.set(key, base);
 	}
+	const check = moduleTree(resolved);
+	for (const [prefix, key] of derived) if (check.keyOf(prefix, "sonar.projectBaseDir") !== key) throw new Error(`Could not give module ${prefix.slice(0, -1)} its base directory`);
 	return resolved;
 }
 var ARTIFACT_PREFIX = "sonar-fork-analysis-";
@@ -76676,7 +76683,7 @@ async function prepare(inputs) {
 		workspace,
 		home: homedir()
 	}, staging, tool.name, pullRequestNumber(), types.files, types.links);
-	for (const warning$1 of staged.warnings) warning(warning$1);
+	for (const warning$2 of staged.warnings) warning(warning$2);
 	if (!process.env.ACTIONS_RUNTIME_TOKEN) {
 		warning(`Not running in GitHub Actions, so ${name} was not uploaded: ${staging}`);
 		return;
@@ -76716,7 +76723,7 @@ async function simulate(tool, workingDirectory, temp, inputs) {
 	if (!existsSync$1(dump)) throw new Error(missingDump(tool));
 	const text = readFileSync$1(dump, "utf8");
 	rmSync(dump);
-	return resolveModuleBases(npm ? parseNpmDump(text) : parseProperties(text));
+	return resolveModuleBases(npm ? parseNpmDump(text) : parseProperties(text), workingDirectory);
 }
 function nodeTypes(tool, workingDirectory, workspace) {
 	if (tool.name !== "scanner" && tool.name !== "npm") return {
@@ -76872,7 +76879,7 @@ async function analyzeCommit(inputs, context, origin, workspace, found) {
 	];
 	if (existsSync$1(join(artifact, "home"))) cpSync(join(artifact, "home"), home, { recursive: true });
 	if (choiceWarning) warnings.push(choiceWarning);
-	for (const warning$2 of warnings) warning(warning$2);
+	for (const warning$1 of warnings) warning(warning$1);
 	const properties = resolved.properties;
 	if (!properties.has("sonar.projectBaseDir")) properties.set("sonar.projectBaseDir", workspace);
 	const languages = await serverLanguages(languagesHost(inputs.hostUrl, inputs.buildArguments), inputs.token);

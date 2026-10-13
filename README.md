@@ -47,14 +47,14 @@ Coming from v1? It no longer gets fixes, not even security fixes. See
 
 ## Supported projects
 
-| Project                                                      | What the action does                                                       | Tested |
-| ------------------------------------------------------------ | -------------------------------------------------------------------------- | ------ |
-| Maven, Gradle                                                | [Runs the build](#if-the-action-runs-your-build-maven-and-gradle)          | Yes    |
-| npm, pnpm                                                    | [Runs after your build and tests](#if-you-run-your-build-everything-else)  | Yes    |
-| Yarn with `nodeLinker: node-modules`, Bun                    | [Runs after your build and tests](#if-you-run-your-build-everything-else)  | No     |
-| Yarn Plug'n'Play                                             | [Runs after your build and tests](#if-you-run-your-build-everything-else)¹ | No     |
-| Python, Go, PHP and others with a `sonar-project.properties` | [Runs after your build and tests](#if-you-run-your-build-everything-else)² | No     |
-| .NET, C, C++ and Objective-C                                 | Not supported³                                                             |        |
+| Project                                                                            | What the action does                                                       | Tested |
+| ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------ |
+| Maven, Gradle                                                                      | [Runs the build](#if-the-action-runs-your-build-maven-and-gradle)          | Yes    |
+| npm, pnpm                                                                          | [Runs after your build and tests](#if-you-run-your-build-everything-else)  | Yes    |
+| Yarn with `nodeLinker: node-modules`, Bun                                          | [Runs after your build and tests](#if-you-run-your-build-everything-else)  | No     |
+| Yarn Plug'n'Play                                                                   | [Runs after your build and tests](#if-you-run-your-build-everything-else)¹ | No     |
+| Python, Go, PHP and others with a `sonar-project.properties` and no `package.json` | [Runs after your build and tests](#if-you-run-your-build-everything-else)² | No     |
+| .NET, C, C++ and Objective-C                                                       | Not supported³                                                             |        |
 
 ¹ Rules that need types find fewer issues because there's no `node_modules` to
 read the types from. Setting `nodeLinker: node-modules` avoids this.
@@ -202,6 +202,9 @@ recognises these projects by that file:
 sonar.sources=src
 sonar.python.coverage.reportPaths=coverage.xml
 ```
+
+If a `package.json` is next to that file, the project gets the npm scanner
+instead, as described above. To keep Sonar's scanner, set `build-tool: scanner`.
 
 On pull requests from forks, Python is only analysed once you
 [turn it on](docs/configuration.md#languages-on-pull-requests-from-forks).

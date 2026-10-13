@@ -71,26 +71,42 @@ export function npmSimulationProperties(
   return properties
 }
 
-// The npm scanner passes a module's sonar.projectBaseDir as written, often relative. The engine resolves
-// it against the parent module's base directory, so this does the same before the paths are staged.
+// The npm scanner passes sonar.projectBaseDir as written, often relative, and none for a module that
+// sets none. The engine resolves a module's against its parent's base directory, and derives a missing
+// one from the module id, so this does the same before the paths are staged. Other tools write
+// absolute bases for every module, which this leaves as they are.
 export function resolveModuleBases(
-  settings: Map<string, string>
+  settings: Map<string, string>,
+  workingDirectory: string
 ): Map<string, string> {
   const tree = moduleTree(settings)
   const resolved = new Map(settings)
   const bases = new Map<string, string>()
+  const derived: [string, string][] = []
   for (const prefix of tree.prefixes) {
     const key = tree.keyOf(prefix, 'sonar.projectBaseDir')
     const value = key === undefined ? undefined : settings.get(key)
-    const parent = bases.get(tree.parents.get(prefix) ?? '')
-    if (value === undefined) continue
+    const parentPrefix = tree.parents.get(prefix)
+    const parent =
+      parentPrefix === undefined ? workingDirectory : bases.get(parentPrefix)
+    if (parent === undefined || (prefix === '' && value === undefined)) continue
     const base =
-      prefix === '' || isAbsolute(value) || parent === undefined
-        ? value
+      value === undefined
+        ? join(parent, prefix.slice((parentPrefix ?? '').length, -1))
         : resolve(parent, value)
     bases.set(prefix, base)
-    if (key !== undefined) resolved.set(key, base)
+    if (key === undefined) {
+      derived.push([prefix, `${prefix}sonar.projectBaseDir`])
+      resolved.set(`${prefix}sonar.projectBaseDir`, base)
+    } else resolved.set(key, base)
   }
+  // A new key could go to another module than meant, as module ids may hold dots.
+  const check = moduleTree(resolved)
+  for (const [prefix, key] of derived)
+    if (check.keyOf(prefix, 'sonar.projectBaseDir') !== key)
+      throw new Error(
+        `Could not give module ${prefix.slice(0, -1)} its base directory`
+      )
   return resolved
 }
 

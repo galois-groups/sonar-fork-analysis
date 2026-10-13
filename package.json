@@ -49,6 +49,7 @@
     "@eslint-community/eslint-plugin-eslint-comments": "^4.8.1",
     "@eslint/js": "^10.0.1",
     "@octokit/openapi-webhooks-types": "^12.1.0",
+    "@sonar/scan": "^5.0.1",
     "@types/node": "^24.0.0",
     "@vitest/coverage-v8": "^5.0.3",
     "@vitest/eslint-plugin": "^1.6.27",
@@ -92,6 +93,9 @@
     ],
     "ignore": [
       "dist/**"
+    ],
+    "ignoreDependencies": [
+      "@sonar/scan"
     ]
   },
   "lockfile-lint": {

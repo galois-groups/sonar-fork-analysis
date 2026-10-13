@@ -20,6 +20,7 @@ import {
   stageAnalysis,
   typeInformation
 } from '../src/prepare.js'
+import { moduleTree } from '../src/settings.js'
 
 let root: string
 let workspace: string
@@ -96,7 +97,8 @@ describe('resolveModuleBases', () => {
         ['app.ui.sonar.projectBaseDir', 'web'],
         ['lib.sonar.projectBaseDir', join(root, 'lib')],
         ['lib.sonar.sources', 'src']
-      ])
+      ]),
+      root
     )
     expect(Object.fromEntries(settings)).toEqual({
       'sonar.projectBaseDir': root,
@@ -109,24 +111,66 @@ describe('resolveModuleBases', () => {
     })
   })
 
+  it('gives a module without a base its id as a directory under its parent, as the engine does', () => {
+    const settings = resolveModuleBases(
+      new Map([
+        ['sonar.projectBaseDir', root],
+        ['sonar.modules', 'frontend'],
+        ['frontend.sonar.sources', 'src'],
+        ['frontend.sonar.modules', 'ui']
+      ]),
+      root
+    )
+    expect(settings.get('frontend.sonar.projectBaseDir')).toBe(
+      join(root, 'frontend')
+    )
+    expect(settings.get('frontend.ui.sonar.projectBaseDir')).toBe(
+      join(root, 'frontend', 'ui')
+    )
+    expect(
+      moduleTree(settings).keyOf('frontend.', 'sonar.projectBaseDir')
+    ).toBe('frontend.sonar.projectBaseDir')
+  })
+
   it("takes a module's parent from the tree, not from the dots in its key", () => {
     // Module a.b sits under the root: dropping the key's last segment would name a missing module a.
     const settings = resolveModuleBases(
       new Map([
         ['sonar.projectBaseDir', root],
-        ['sonar.modules', 'a.b'],
-        ['a.b.sonar.projectBaseDir', 'x']
-      ])
+        ['sonar.modules', 'a.b,c'],
+        ['a.b.sonar.projectBaseDir', 'x'],
+        ['c.sonar.modules', 'd.e']
+      ]),
+      root
     )
     expect(settings.get('a.b.sonar.projectBaseDir')).toBe(join(root, 'x'))
+    expect(settings.get('c.d.e.sonar.projectBaseDir')).toBe(
+      join(root, 'c', 'd.e')
+    )
   })
 
-  it('leaves a module without a base, or without a parent base, as it is', () => {
+  it('resolves a relative project base against the working directory', () => {
+    const settings = resolveModuleBases(
+      new Map([
+        ['sonar.projectBaseDir', 'packages/app'],
+        ['sonar.modules', 'ui']
+      ]),
+      root
+    )
+    expect(settings.get('sonar.projectBaseDir')).toBe(
+      join(root, 'packages', 'app')
+    )
+    expect(settings.get('ui.sonar.projectBaseDir')).toBe(
+      join(root, 'packages', 'app', 'ui')
+    )
+  })
+
+  it('leaves the modules as they are without a project base', () => {
     const settings = new Map([
       ['sonar.modules', 'app'],
       ['app.sonar.projectBaseDir', 'packages/app']
     ])
-    expect(resolveModuleBases(settings)).toEqual(settings)
+    expect(resolveModuleBases(settings, root)).toEqual(settings)
   })
 })
 

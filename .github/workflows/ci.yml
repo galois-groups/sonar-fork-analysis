@@ -46,10 +46,10 @@ jobs:
       - name: 'Test'
         run: npm test
 
-      # This repository analysed by its own action, as the README sets it up: directly with the token,
-      # through the Sonar workflow without it, on pull requests from forks and Dependabot.
+      # This repository analysed by its released action, as the README sets it up: directly with the
+      # token, through the Sonar workflow without it, on pull requests from forks and Dependabot.
       - name: 'Analyse with Sonar'
-        uses: $/
+        uses: galois-groups/sonar-fork-analysis@45be2ac8bb7cdc723a2c48efcdb5f0936e98f1b6 # v2.0.0
         with:
           project-key: galois-groups_sonar-fork-analysis
           sonar-organization: galois-groups

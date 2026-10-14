@@ -30,10 +30,8 @@ jobs:
             echo "::error::$TAG isn't the latest release, so $major stays where it is. The latest is $latest."
             exit 1
           fi
-          sha=$(gh api "repos/$GH_REPO/commits/$TAG" --jq .sha)
           if gh api "repos/$GH_REPO/git/ref/tags/$major" --silent 2>/dev/null; then
-            gh api --method PATCH "repos/$GH_REPO/git/refs/tags/$major" -f sha="$sha" -F force=true --silent
+            gh api --method PATCH "repos/$GH_REPO/git/refs/tags/$major" -f sha="$GITHUB_SHA" -F force=true --silent
           else
-            gh api --method POST "repos/$GH_REPO/git/refs" -f ref="refs/tags/$major" -f sha="$sha" --silent
+            gh api --method POST "repos/$GH_REPO/git/refs" -f ref="refs/tags/$major" -f sha="$GITHUB_SHA" --silent
           fi
-          echo "$major now points to $TAG ($sha)."

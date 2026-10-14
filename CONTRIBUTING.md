@@ -40,3 +40,8 @@ also commit the `dist` artifact that the failed run uploads.
 
 Third-party actions added to a workflow must also be added to the repository's
 allowed actions.
+
+To release, publish a release on GitHub with a new `vX.Y.Z` tag. Pick a commit
+whose checks on `main` all passed, including Fixtures Sonar. Keep it marked as
+the latest release. The Release workflow then points the major tag at it: `v2`
+for `v2.1.0`.

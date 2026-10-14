@@ -1,0 +1,39 @@
+# Points the major tag at each new release: v2 for v2.1.0. Immutable releases lock the release's own
+# tag, so the major tag is a plain tag that only this workflow moves.
+name: 'Release'
+on:
+  release:
+    types:
+      - released
+permissions: {}
+jobs:
+  major-tag:
+    name: 'Move the major tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: 'Move the major tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [[ ! "$TAG" =~ ^(v[0-9]+)\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::$TAG isn't a vX.Y.Z version."
+            exit 1
+          fi
+          major="${BASH_REMATCH[1]}"
+          latest=$(gh api "repos/$GH_REPO/releases/latest" --jq .tag_name)
+          if [[ "$latest" != "$TAG" ]]; then
+            echo "::error::$TAG isn't the latest release, so $major stays where it is. The latest is $latest."
+            exit 1
+          fi
+          sha=$(gh api "repos/$GH_REPO/commits/$TAG" --jq .sha)
+          if gh api "repos/$GH_REPO/git/ref/tags/$major" --silent 2>/dev/null; then
+            gh api --method PATCH "repos/$GH_REPO/git/refs/tags/$major" -f sha="$sha" -F force=true --silent
+          else
+            gh api --method POST "repos/$GH_REPO/git/refs" -f ref="refs/tags/$major" -f sha="$sha" --silent
+          fi
+          echo "$major now points to $TAG ($sha)."

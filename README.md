@@ -12,11 +12,6 @@
 
 ---
 
-<!-- prettier-ignore -->
-> [!NOTE]
-> v2 is under development and not released yet, so `@v2` doesn't resolve. This
-> README describes v2.
-
 Runs Sonar analysis on pull requests from forks, with coverage and test results.
 
 GitHub doesn't give secrets to workflows triggered by a fork, so the usual Sonar
@@ -53,14 +48,14 @@ Coming from v1? It no longer gets fixes, not even security fixes. See
 
 ## Supported projects
 
-| Project                                                      | What the action does                                                       | Tested |
-| ------------------------------------------------------------ | -------------------------------------------------------------------------- | ------ |
-| Maven, Gradle                                                | [Runs the build](#if-the-action-runs-your-build-maven-and-gradle)          | Yes    |
-| npm, pnpm                                                    | [Runs after your build and tests](#if-you-run-your-build-everything-else)  | Yes    |
-| Yarn with `nodeLinker: node-modules`, Bun                    | [Runs after your build and tests](#if-you-run-your-build-everything-else)  | No     |
-| Yarn Plug'n'Play                                             | [Runs after your build and tests](#if-you-run-your-build-everything-else)¹ | No     |
-| Python, Go, PHP and others with a `sonar-project.properties` | [Runs after your build and tests](#if-you-run-your-build-everything-else)² | No     |
-| .NET, C, C++ and Objective-C                                 | Not supported³                                                             |        |
+| Project                                                      | What the action does                                 | Tested |
+| ------------------------------------------------------------ | ---------------------------------------------------- | ------ |
+| Maven, Gradle                                                | [Runs the build](#maven-and-gradle)                  | Yes    |
+| npm, pnpm                                                    | [Runs after your build and tests](#everything-else)  | Yes    |
+| Yarn with `nodeLinker: node-modules`, Bun                    | [Runs after your build and tests](#everything-else)  | No     |
+| Yarn Plug'n'Play                                             | [Runs after your build and tests](#everything-else)¹ | No     |
+| Python, Go, PHP and others with a `sonar-project.properties` | [Runs after your build and tests](#everything-else)² | No     |
+| .NET, C, C++ and Objective-C                                 | Not supported³                                       |        |
 
 ¹ Rules that need types find fewer issues because there's no `node_modules` to
 read the types from. Setting `nodeLinker: node-modules` avoids this.
@@ -120,17 +115,15 @@ token without one is removed after 60 days without use.
 
 ### 2. Add the action to your build workflow
 
-What you add depends on who runs the build. Either way, your build workflow must
-run on `pull_request`, not `pull_request_target`. With `pull_request_target`, a
-fork's code would run with your secrets, so the action refuses to run there.
+Your build workflow must run on `pull_request`, not `pull_request_target`. With
+`pull_request_target`, a fork's code would run with your secrets, so the action
+refuses to run there. Run the build workflow on pushes to your default branch
+too. Sonar compares each pull request with that branch's analysis.
 
-Run the build workflow on pushes to your default branch too. Sonar compares each
-pull request with that branch's analysis.
-
-#### If the action runs your build: Maven and Gradle
+#### Maven and Gradle
 
 Put the action in place of your build step. It runs `verify` for Maven and
-`check` for Gradle. [`build-goals`](docs/configuration.md#inputs) changes that.
+`check` for Gradle.
 
 ```yaml
 steps:
@@ -150,25 +143,10 @@ steps:
       sonar-token: ${{ secrets.SONAR_TOKEN }}
 ```
 
-Gradle builds need version 2.1 or later of the `org.sonarqube` plugin. Maven
-builds need nothing. The action runs the version of `sonar-maven-plugin` that
-your pom pins in `<plugins>` or `<pluginManagement>`. That version must be 3.2
-or later. If your pom pins none, the action runs the latest. Dependabot can keep
-either up to date.
+#### Everything else
 
-#### If you run your build: everything else
-
-This covers JavaScript, TypeScript, Python, Go, PHP and other languages. Add the
-action after your own build and test steps.
-
-For a Node project, the action runs Sonar's npm scanner (`@sonar/scan`) with
-`npx`. The action recognises these projects by their `package.json`. The scanner
-takes the project's name and version from it. It finds a coverage report in
-`coverage/lcov.info` by itself. If there's also a `sonar-project.properties`
-next to it, it reads that too. It reads no other settings file, so in a
-monorepo, each package's settings go in that file, under the package's module
-prefix: `app.sonar.tests=test`. If your `package.json` lists `@sonar/scan`, the
-action runs that version. Otherwise it runs the latest.
+Add the action after your build and test steps. A Node project needs nothing
+more:
 
 ```yaml
 steps:
@@ -189,31 +167,15 @@ steps:
       sonar-token: ${{ secrets.SONAR_TOKEN }}
 ```
 
-The action works with `@sonar/scan` 4.2.7 or later. Use 5.0.0 or later if you
-can. Older versions first download Sonar's engine, which slows them down. On
-SonarQube Server, that download fails unless the server allows access without a
-token. With Yarn's Plug'n'Play there's no `node_modules` for `npx` to look in,
-so the latest version runs.
-
-For a Node project, the action also passes the type declarations in your
-`node_modules` to the Sonar workflow. It passes the links your package manager
-makes there too. Rules that need types then work on pull requests from forks as
-well, even across the packages of a monorepo.
-
-For other languages, the action runs Sonar's scanner, as Sonar's own scan action
-does. It reads its settings from your `sonar-project.properties`. The action
-recognises these projects by that file:
+Other projects also need a `sonar-project.properties`, such as:
 
 ```properties
 sonar.sources=src
 sonar.python.coverage.reportPaths=coverage.xml
 ```
 
-If a `package.json` is next to that file, the project gets the npm scanner
-instead, as described above. To keep Sonar's scanner, set `build-tool: scanner`.
-
-On pull requests from forks, Python is only analysed once you
-[turn it on](docs/configuration.md#languages-on-pull-requests-from-forks).
+See [configuration](docs/configuration.md) for the inputs, the versions the
+action needs and how it picks the build tool.
 
 ### 3. Add the Sonar workflow
 
@@ -257,16 +219,16 @@ and how to harden your setup.
 
 ## Real-world examples
 
-[Instancio](https://github.com/instancio/instancio) analyses its pull requests
-from forks with this action. It's a Maven build with 38 modules. See its
-[build workflow](https://github.com/instancio/instancio/blob/main/.github/workflows/build.yml)
-and
-[Sonar workflow](https://github.com/instancio/instancio/blob/main/.github/workflows/sonar.yml).
+These projects analyse their pull requests from forks with the action:
 
-This repository analyses itself with the action too. It's a TypeScript project,
-so the action runs the npm scanner after its tests. See its
-[build workflow](.github/workflows/ci.yml) and
-[Sonar workflow](.github/workflows/sonar.yml).
+- [Instancio](https://github.com/instancio/instancio): a Maven build with 38
+  modules. See its
+  [build workflow](https://github.com/instancio/instancio/blob/main/.github/workflows/build.yml)
+  and
+  [Sonar workflow](https://github.com/instancio/instancio/blob/main/.github/workflows/sonar.yml).
+- This repository: a TypeScript project, analysed by the npm scanner after its
+  tests. See its [build workflow](.github/workflows/ci.yml) and
+  [Sonar workflow](.github/workflows/sonar.yml).
 
 ## Reporting vulnerabilities
 

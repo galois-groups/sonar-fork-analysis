@@ -174,8 +174,8 @@ sonar.sources=src
 sonar.python.coverage.reportPaths=coverage.xml
 ```
 
-[Build tools](docs/configuration.md#build-tools) has the details: the versions
-the action needs and how it picks the build tool.
+See [configuration](docs/configuration.md) for the inputs, the versions the
+action needs and how it picks the build tool.
 
 ### 3. Add the Sonar workflow
 

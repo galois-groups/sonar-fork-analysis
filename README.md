@@ -1,8 +1,14 @@
+<div align="center">
+
 ![Sonar Fork Analysis](docs/images/logo.svg)
+
+[![Release](https://img.shields.io/github/v/release/galois-groups/sonar-fork-analysis)](https://github.com/galois-groups/sonar-fork-analysis/releases/latest)
 [![CI](https://github.com/galois-groups/sonar-fork-analysis/actions/workflows/ci.yml/badge.svg)](https://github.com/galois-groups/sonar-fork-analysis/actions/workflows/ci.yml)
 [![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=galois-groups_sonar-fork-analysis&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=galois-groups_sonar-fork-analysis)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=galois-groups_sonar-fork-analysis&metric=coverage)](https://sonarcloud.io/summary/new_code?id=galois-groups_sonar-fork-analysis)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/galois-groups/sonar-fork-analysis/badge)](https://scorecard.dev/viewer/?uri=github.com/galois-groups/sonar-fork-analysis)
+
+</div>
 
 ---
 

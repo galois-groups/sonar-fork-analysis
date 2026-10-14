@@ -15,23 +15,28 @@ jobs:
       contents: write
     steps:
       - name: 'Move the major tag'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.event.release.tag_name }}
-        run: |
-          if [[ ! "$TAG" =~ ^(v[0-9]+)\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::$TAG isn't a vX.Y.Z version."
-            exit 1
-          fi
-          major="${BASH_REMATCH[1]}"
-          latest=$(gh api "repos/$GH_REPO/releases/latest" --jq .tag_name)
-          if [[ "$latest" != "$TAG" ]]; then
-            echo "::error::$TAG isn't the latest release, so $major stays where it is. The latest is $latest."
-            exit 1
-          fi
-          if gh api "repos/$GH_REPO/git/ref/tags/$major" --silent 2>/dev/null; then
-            gh api --method PATCH "repos/$GH_REPO/git/refs/tags/$major" -f sha="$GITHUB_SHA" -F force=true --silent
-          else
-            gh api --method POST "repos/$GH_REPO/git/refs" -f ref="refs/tags/$major" -f sha="$GITHUB_SHA" --silent
-          fi
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const tag = context.payload.release.tag_name;
+            const match = /^(v\d+)\.\d+\.\d+$/.exec(tag);
+            if (!match) {
+              core.setFailed(`${tag} isn't a vX.Y.Z version.`);
+              return;
+            }
+            const major = match[1];
+            const { data: latest } = await github.rest.repos.getLatestRelease(context.repo);
+            if (latest.tag_name !== tag) {
+              core.setFailed(
+                `${tag} isn't the latest release, so ${major} stays where it is. The latest is ${latest.tag_name}.`,
+              );
+              return;
+            }
+            const ref = `tags/${major}`;
+            try {
+              await github.rest.git.getRef({ ...context.repo, ref });
+              await github.rest.git.updateRef({ ...context.repo, ref, sha: context.sha, force: true });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              await github.rest.git.createRef({ ...context.repo, ref: `refs/${ref}`, sha: context.sha });
+            }

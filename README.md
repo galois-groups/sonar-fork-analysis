@@ -12,11 +12,6 @@
 
 ---
 
-<!-- prettier-ignore -->
-> [!NOTE]
-> v2 is under development and not released yet, so `@v2` doesn't resolve. This
-> README describes v2.
-
 Runs Sonar analysis on pull requests from forks, with coverage and test results.
 
 GitHub doesn't give secrets to workflows triggered by a fork, so the usual Sonar

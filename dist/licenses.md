@@ -2,7 +2,7 @@
 
 The app bundles dependencies which contain the following licenses:
 
-## @actions/artifact - 6.2.1 (MIT)
+## @actions/artifact - 6.3.1 (MIT)
 
 The MIT License (MIT)
 

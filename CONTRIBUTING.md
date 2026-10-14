@@ -43,5 +43,6 @@ allowed actions.
 
 To release, publish a release on GitHub with a new `vX.Y.Z` tag. Pick a commit
 whose checks on `main` all passed, including Fixtures Sonar. Keep it marked as
-the latest release. The Release workflow then points the major tag at it: `v2`
-for `v2.1.0`.
+the latest release. Also tick "Publish this Action to the GitHub Marketplace".
+Without it, the Marketplace keeps showing the previous version. The Release
+workflow then points the major tag at the release: `v2` for `v2.1.0`.

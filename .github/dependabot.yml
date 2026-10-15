@@ -57,7 +57,12 @@ updates:
     cooldown:
       default-days: 7
     groups:
-      npm:
+      # What ends up in dist/, so its pull request needs dist/ rebuilt.
+      runtime:
+        patterns: ['@actions/*', 'vite']
+        exclude-patterns: ['@actions/workflow-parser']
+        update-types: ['minor', 'patch']
+      development:
         patterns: ['*']
         update-types: ['minor', 'patch']
     ignore:

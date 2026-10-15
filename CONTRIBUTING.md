@@ -34,9 +34,10 @@ pull request.
 To run the action locally, copy `.env.example` to `.env`, edit it and run
 `npm run local`.
 
-Dependabot pull requests that update runtime dependencies fail CI until `dist/`
-is rebuilt. To rebuild it, run `npm ci && npm run bundle` on the branch. You can
-also commit the `dist` artifact that the failed run uploads.
+Dependabot puts the runtime dependencies and the bundler in a pull request of
+their own. It fails CI until `dist/` is rebuilt. To rebuild it, run
+`npm ci && npm run bundle` on the branch. You can also commit the `dist`
+artifact that the failed run uploads.
 
 Third-party actions added to a workflow must also be added to the repository's
 allowed actions.

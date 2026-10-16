@@ -3,6 +3,9 @@
 `npm run all` formats, lints, type-checks, tests and bundles into `dist/`, which
 is committed.
 
+New behaviour comes with tests. SonarCloud's quality gate fails a pull request
+whose new code has less than 80% coverage.
+
 Three workflows besides CI check the action:
 
 - [![Fixtures](https://github.com/galois-groups/sonar-fork-analysis/actions/workflows/fixtures.yml/badge.svg)](https://github.com/galois-groups/sonar-fork-analysis/actions/workflows/fixtures.yml)

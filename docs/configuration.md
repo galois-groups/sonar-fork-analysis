@@ -259,12 +259,18 @@ action then uses your checkout and leaves it in place. Your checkout must:
 - hold nothing else. A step that adds or changes files would have them analysed
   as the pull request's code, so the action refuses them.
 
+For pull requests from forks, `actions/checkout` refuses this checkout unless
+you set `allow-unsafe-pr-checkout: true`. The refusal protects workflows that
+run the checked-out code. The action never runs anything from your checkout: the
+scanner only reads the files.
+
 ```yaml
 - uses: actions/checkout@v7
   with:
     ref: ${{ github.event.workflow_run.head_sha }}
     fetch-depth: 0
     persist-credentials: false
+    allow-unsafe-pr-checkout: true
     submodules: true
 - uses: galois-groups/sonar-fork-analysis@v2
   with:

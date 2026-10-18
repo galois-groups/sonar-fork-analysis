@@ -583,6 +583,18 @@ describe('run in prepare mode', () => {
     )
   })
 
+  it('says nothing about type declarations for a Maven build with a package.json for tooling', async () => {
+    writeFileSync(join(project, 'package.json'), '{}')
+    simulate(`sonar.projectBaseDir=${project}`)
+
+    await run()
+
+    expect(core.setFailed).not.toHaveBeenCalled()
+    expect(core.info).not.toHaveBeenCalledWith(
+      expect.stringContaining('No type declarations found')
+    )
+  })
+
   it('says when a Node project has no type declarations to ship', async () => {
     inputs['build-tool'] = 'scanner'
     rmSync(join(project, 'pom.xml'))

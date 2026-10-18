@@ -212,14 +212,7 @@ function visitDirectory(walk: Walk, path: string, inPackages: boolean): void {
     if (entry.isDirectory()) {
       if (entry.name === '.git') continue
       const isPackages = entry.name === 'node_modules'
-      // Only a Node project's own, next to its package.json. That leaves out the Node and npm that
-      // Maven and Gradle plugins install, such as frontend-maven-plugin's node/node_modules.
-      if (
-        isPackages &&
-        !inPackages &&
-        !(existsSync(join(path, 'package.json')) && firstVisit(walk, child))
-      )
-        continue
+      if (isPackages && !inPackages && !firstVisit(walk, child)) continue
       visitDirectory(walk, child, inPackages || isPackages)
     } else if (!inPackages) continue
     else if (entry.isSymbolicLink()) recordLink(walk, child)

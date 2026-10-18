@@ -74108,7 +74108,7 @@ function visitDirectory(walk, path, inPackages) {
 		if (entry.isDirectory()) {
 			if (entry.name === ".git") continue;
 			const isPackages = entry.name === "node_modules";
-			if (isPackages && !inPackages && !(existsSync$1(join(path, "package.json")) && firstVisit(walk, child))) continue;
+			if (isPackages && !inPackages && !firstVisit(walk, child)) continue;
 			visitDirectory(walk, child, inPackages || isPackages);
 		} else if (!inPackages) continue;
 		else if (entry.isSymbolicLink()) recordLink(walk, child);
@@ -76696,13 +76696,13 @@ async function prepare(inputs) {
 	if (left.size > 0) warning(`The analysis of pull requests leaves out these settings: ${[...left].join(", ")}. Pass them to the analysis job's build-arguments if it needs them.`);
 	if (settings.get("sonar.organization") && !inputs.organization) warning(`The build sets sonar.organization, which the analysis of pull requests takes only from the sonar-organization input: set it in both workflows.`);
 	const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
-	const types = nodeTypes(workingDirectory, workspace);
+	const types = nodeTypes(tool, workingDirectory, workspace);
 	const staging = join(temp, "artifact");
 	const staged = stageAnalysis(kept, {
 		workspace,
 		home: homedir()
 	}, staging, tool.name, pullRequestNumber(), types.files, types.links);
-	for (const warning$2 of staged.warnings) warning(warning$2);
+	for (const warning$1 of staged.warnings) warning(warning$1);
 	if (!process.env.ACTIONS_RUNTIME_TOKEN) {
 		warning(`Not running in GitHub Actions, so ${name} was not uploaded: ${staging}`);
 		return;
@@ -76744,13 +76744,13 @@ async function simulate(tool, workingDirectory, temp, inputs) {
 	rmSync(dump);
 	return resolveModuleBases(npm ? parseNpmDump(text) : parseProperties(text), workingDirectory);
 }
-function nodeTypes(workingDirectory, workspace) {
+function nodeTypes(tool, workingDirectory, workspace) {
 	const types = typeInformation(workingDirectory, workspace);
 	if (types.files.length > 0 || types.links.length > 0) {
 		const bytes = types.files.reduce((sum, path) => sum + statSync(path).size, 0);
 		const outside = types.outside > 0 ? `, leaving out ${types.outside} links that lead outside the workspace` : "";
 		info(`Shipping ${types.files.length} type declaration files (${Math.ceil(bytes / 1048576)} MB) and ${types.links.length} links from node_modules${outside}`);
-	} else if (existsSync$1(join(workingDirectory, "package.json"))) info("No type declarations found in node_modules: the analysis of pull requests resolves fewer types");
+	} else if ((tool.name === "npm" || tool.name === "scanner") && existsSync$1(join(workingDirectory, "package.json"))) info("No type declarations found in node_modules: the analysis of pull requests resolves fewer types");
 	return types;
 }
 function pullRequestNumber() {
@@ -76893,7 +76893,7 @@ async function analyzeCommit(inputs, context, origin, workspace, found) {
 	];
 	if (existsSync$1(join(artifact, "home"))) cpSync(join(artifact, "home"), home, { recursive: true });
 	if (choiceWarning) warnings.push(choiceWarning);
-	for (const warning$1 of warnings) warning(warning$1);
+	for (const warning$2 of warnings) warning(warning$2);
 	const properties = resolved.properties;
 	if (!properties.has("sonar.projectBaseDir")) properties.set("sonar.projectBaseDir", workspace);
 	const languages = await serverLanguages(languagesHost(inputs.hostUrl, inputs.buildArguments), inputs.token);

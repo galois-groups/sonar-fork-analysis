@@ -174,7 +174,7 @@ async function prepare(inputs: Inputs): Promise<void> {
     )
 
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd()
-  const types = nodeTypes(workingDirectory, workspace)
+  const types = nodeTypes(tool, workingDirectory, workspace)
   const staging = join(temp, 'artifact')
   const staged = stageAnalysis(
     kept,
@@ -264,9 +264,9 @@ async function simulate(
   )
 }
 
-// The type declarations the analysis of Node code needs from node_modules, a Maven or Gradle
-// frontend's included.
+// The type declarations a Node project's analysis needs from node_modules.
 function nodeTypes(
+  tool: BuildTool,
   workingDirectory: string,
   workspace: string
 ): TypeInformation {
@@ -283,7 +283,11 @@ function nodeTypes(
     core.info(
       `Shipping ${types.files.length} type declaration files (${Math.ceil(bytes / 1_048_576)} MB) and ${types.links.length} links from node_modules${outside}`
     )
-  } else if (existsSync(join(workingDirectory, 'package.json'))) {
+  } else if (
+    // A Maven or Gradle build may keep a package.json only for tooling, such as Git hooks.
+    (tool.name === 'npm' || tool.name === 'scanner') &&
+    existsSync(join(workingDirectory, 'package.json'))
+  ) {
     core.info(
       'No type declarations found in node_modules: the analysis of pull requests resolves fewer types'
     )

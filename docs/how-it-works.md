@@ -184,9 +184,9 @@ artifact can't change them:
 - which languages are analysed;
 - the [features that stay off](security.md#what-stays-off-on-the-fork-path).
 
-The project key and the organization come only from the inputs. On the fork
-path, the build's settings come from the pull request, so they can't decide
-which project and organization receive an analysis made with your token.
+The project key and the organization come only from the inputs. A pull request
+from a fork controls its build's settings. Taking these two from them would let
+it choose where your token sends the analysis.
 
 ### The analyzers
 

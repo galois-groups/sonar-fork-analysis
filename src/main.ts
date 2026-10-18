@@ -174,7 +174,7 @@ async function prepare(inputs: Inputs): Promise<void> {
     )
 
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd()
-  const types = nodeTypes(tool, workingDirectory, workspace)
+  const types = nodeTypes(workingDirectory, workspace)
   const staging = join(temp, 'artifact')
   const staged = stageAnalysis(
     kept,
@@ -264,14 +264,12 @@ async function simulate(
   )
 }
 
-// The type declarations a Node project's analysis needs from node_modules.
+// The type declarations the analysis of Node code needs from node_modules, a Maven or Gradle
+// frontend's included.
 function nodeTypes(
-  tool: BuildTool,
   workingDirectory: string,
   workspace: string
 ): TypeInformation {
-  if (tool.name !== 'scanner' && tool.name !== 'npm')
-    return { files: [], links: [], outside: 0 }
   const types = typeInformation(workingDirectory, workspace)
   if (types.files.length > 0 || types.links.length > 0) {
     const bytes = types.files.reduce(

@@ -74108,7 +74108,7 @@ function visitDirectory(walk, path, inPackages) {
 		if (entry.isDirectory()) {
 			if (entry.name === ".git") continue;
 			const isPackages = entry.name === "node_modules";
-			if (isPackages && !inPackages && !firstVisit(walk, child)) continue;
+			if (isPackages && !inPackages && !(existsSync$1(join(path, "package.json")) && firstVisit(walk, child))) continue;
 			visitDirectory(walk, child, inPackages || isPackages);
 		} else if (!inPackages) continue;
 		else if (entry.isSymbolicLink()) recordLink(walk, child);
@@ -76696,7 +76696,7 @@ async function prepare(inputs) {
 	if (left.size > 0) warning(`The analysis of pull requests leaves out these settings: ${[...left].join(", ")}. Pass them to the analysis job's build-arguments if it needs them.`);
 	if (settings.get("sonar.organization") && !inputs.organization) warning(`The build sets sonar.organization, which the analysis of pull requests takes only from the sonar-organization input: set it in both workflows.`);
 	const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
-	const types = nodeTypes(tool, workingDirectory, workspace);
+	const types = nodeTypes(workingDirectory, workspace);
 	const staging = join(temp, "artifact");
 	const staged = stageAnalysis(kept, {
 		workspace,
@@ -76744,12 +76744,7 @@ async function simulate(tool, workingDirectory, temp, inputs) {
 	rmSync(dump);
 	return resolveModuleBases(npm ? parseNpmDump(text) : parseProperties(text), workingDirectory);
 }
-function nodeTypes(tool, workingDirectory, workspace) {
-	if (tool.name !== "scanner" && tool.name !== "npm") return {
-		files: [],
-		links: [],
-		outside: 0
-	};
+function nodeTypes(workingDirectory, workspace) {
 	const types = typeInformation(workingDirectory, workspace);
 	if (types.files.length > 0 || types.links.length > 0) {
 		const bytes = types.files.reduce((sum, path) => sum + statSync(path).size, 0);

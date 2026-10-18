@@ -404,6 +404,7 @@ describe('typeInformation', () => {
 
   it('finds the declarations in every node_modules, and the package.json files leading to them', () => {
     file(join(workspace, 'package.json'))
+    file(join(workspace, 'packages/web/package.json'))
     file(join(workspace, 'src/types.d.ts'))
     file(join(workspace, 'node_modules/express/index.js'))
     const found = [
@@ -416,6 +417,7 @@ describe('typeInformation', () => {
   })
 
   it('takes the tsconfig files projects extend, and nothing else of a package', () => {
+    file(join(workspace, 'package.json'))
     const tsconfig = file(
       join(workspace, 'node_modules/@tsconfig/node22/tsconfig.json')
     )
@@ -423,8 +425,22 @@ describe('typeInformation', () => {
     expect(files(workspace)).toEqual([tsconfig])
   })
 
+  it('finds the Node projects in a Maven or Gradle build, and leaves out the Node its plugins install', () => {
+    file(join(workspace, 'frontend/package.json'))
+    const own = file(join(workspace, 'frontend/node_modules/rxjs/index.d.ts'))
+    file(join(workspace, 'frontend/node/node_modules/npm/package.json'))
+    file(
+      join(
+        workspace,
+        '.gradle/nodejs/node-v24/lib/node_modules/npm/package.json'
+      )
+    )
+    expect(files(workspace)).toEqual([own])
+  })
+
   it('takes the node_modules above the project up to the workspace, where workspaces install', () => {
     const project = join(workspace, 'packages/web')
+    file(join(project, 'package.json'))
     const own = file(join(project, 'node_modules/local/index.d.ts'))
     const hoisted = file(join(workspace, 'node_modules/express/index.d.ts'))
     file(join(root, 'node_modules/outside/index.d.ts'))
@@ -432,6 +448,7 @@ describe('typeInformation', () => {
   })
 
   it("records a workspace's links to its own packages, without following them", () => {
+    file(join(workspace, 'package.json'))
     file(join(workspace, 'packages/shared/src/index.ts'))
     mkdirSync(join(workspace, 'node_modules/@app'), { recursive: true })
     symlinkSync(
@@ -446,6 +463,7 @@ describe('typeInformation', () => {
   })
 
   it("takes pnpm's store and the links leading into it", () => {
+    file(join(workspace, 'package.json'))
     const store = 'node_modules/.pnpm/express@5/node_modules'
     const declaration = file(join(workspace, store, 'express/index.d.ts'))
     symlinkSync(
@@ -460,6 +478,7 @@ describe('typeInformation', () => {
   })
 
   it('records no link leading out of the workspace, to a file or nowhere', () => {
+    file(join(workspace, 'package.json'))
     file(join(home, 'elsewhere/index.d.ts'))
     file(join(workspace, 'node_modules/typescript/bin/tsc'))
     mkdirSync(join(workspace, 'node_modules/.bin'))
@@ -477,6 +496,7 @@ describe('typeInformation', () => {
 
   it("takes a linked workspace package's own dependencies, which pnpm doesn't hoist", () => {
     const app = join(workspace, 'packages/app')
+    file(join(app, 'package.json'))
     mkdirSync(join(app, 'node_modules/@app'), { recursive: true })
     // Before the link: Windows makes a link to a missing target a file link.
     const zod = file(
@@ -498,6 +518,7 @@ describe('typeInformation', () => {
   nonRootIt('skips a directory it cannot read', () => {
     const locked = join(workspace, 'data')
     file(join(locked, 'x'))
+    file(join(workspace, 'package.json'))
     const found = file(join(workspace, 'node_modules/x/index.d.ts'))
     chmodSync(locked, 0o000)
     try {

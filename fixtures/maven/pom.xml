@@ -13,6 +13,7 @@
         <module>fizzbuzz</module>
         <module>swap-case</module>
         <module>composite</module>
+        <module>frontend</module>
     </modules>
 
     <properties>
@@ -22,6 +23,7 @@
         <jacoco.version>0.8.15</jacoco.version>
         <!-- Not sonar.*: the Sonar plugin reads properties with that prefix as analysis settings. -->
         <sonar-maven-plugin.version>5.8.0.7211</sonar-maven-plugin.version>
+        <frontend-maven-plugin.version>2.0.2</frontend-maven-plugin.version>
     </properties>
 
     <dependencyManagement>
@@ -60,6 +62,11 @@
                     <groupId>org.jacoco</groupId>
                     <artifactId>jacoco-maven-plugin</artifactId>
                     <version>${jacoco.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>com.github.eirslett</groupId>
+                    <artifactId>frontend-maven-plugin</artifactId>
+                    <version>${frontend-maven-plugin.version}</version>
                 </plugin>
                 <plugin>
                     <groupId>org.sonarsource.scanner.maven</groupId>

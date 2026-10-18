@@ -553,6 +553,48 @@ describe('run in prepare mode', () => {
     )
   })
 
+  it('ships the type declarations of a frontend that a Maven build builds', async () => {
+    const frontend = join(project, 'frontend')
+    mkdirSync(join(frontend, 'node_modules', 'rxjs'), { recursive: true })
+    writeFileSync(join(frontend, 'package.json'), '{}')
+    writeFileSync(join(frontend, 'node_modules', 'rxjs', 'index.d.ts'), '')
+    simulate(
+      [
+        `sonar.projectBaseDir=${project}`,
+        'sonar.modules=frontend',
+        `frontend.sonar.projectBaseDir=${frontend}`,
+        'frontend.sonar.sources=src'
+      ].join('\n')
+    )
+
+    await run()
+
+    expect(core.setFailed).not.toHaveBeenCalled()
+    const [, files, staging] = artifact.uploadArtifact.mock.calls[0]
+    expect(files).toContain(
+      join(
+        staging,
+        'workspace',
+        'frontend',
+        'node_modules',
+        'rxjs',
+        'index.d.ts'
+      )
+    )
+  })
+
+  it('says nothing about type declarations for a Maven build with a package.json for tooling', async () => {
+    writeFileSync(join(project, 'package.json'), '{}')
+    simulate(`sonar.projectBaseDir=${project}`)
+
+    await run()
+
+    expect(core.setFailed).not.toHaveBeenCalled()
+    expect(core.info).not.toHaveBeenCalledWith(
+      expect.stringContaining('No type declarations found')
+    )
+  })
+
   it('says when a Node project has no type declarations to ship', async () => {
     inputs['build-tool'] = 'scanner'
     rmSync(join(project, 'pom.xml'))

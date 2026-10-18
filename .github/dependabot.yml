@@ -36,7 +36,7 @@ updates:
         update-types: ['minor', 'patch']
 
   - package-ecosystem: 'npm'
-    directories: ['/fixtures/npm', '/fixtures/pnpm']
+    directories: ['/fixtures/npm', '/fixtures/pnpm', '/fixtures/maven/frontend']
     schedule:
       interval: 'weekly'
     cooldown:

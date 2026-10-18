@@ -270,8 +270,6 @@ function nodeTypes(
   workingDirectory: string,
   workspace: string
 ): TypeInformation {
-  if (tool.name !== 'scanner' && tool.name !== 'npm')
-    return { files: [], links: [], outside: 0 }
   const types = typeInformation(workingDirectory, workspace)
   if (types.files.length > 0 || types.links.length > 0) {
     const bytes = types.files.reduce(
@@ -285,7 +283,11 @@ function nodeTypes(
     core.info(
       `Shipping ${types.files.length} type declaration files (${Math.ceil(bytes / 1_048_576)} MB) and ${types.links.length} links from node_modules${outside}`
     )
-  } else if (existsSync(join(workingDirectory, 'package.json'))) {
+  } else if (
+    // A Maven or Gradle build may keep a package.json only for tooling, such as Git hooks.
+    (tool.name === 'npm' || tool.name === 'scanner') &&
+    existsSync(join(workingDirectory, 'package.json'))
+  ) {
     core.info(
       'No type declarations found in node_modules: the analysis of pull requests resolves fewer types'
     )

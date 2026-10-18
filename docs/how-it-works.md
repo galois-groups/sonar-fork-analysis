@@ -178,11 +178,15 @@ directory inside the checkout.
 Some settings matter for safety. The action always sets those itself. The
 artifact can't change them:
 
-- the project key;
+- the project key and the organization;
 - the analysed commit;
 - the working directory;
 - which languages are analysed;
 - the [features that stay off](security.md#what-stays-off-on-the-fork-path).
+
+The project key and the organization come only from the inputs. A pull request
+from a fork controls its build's settings. Taking these two from them would let
+it choose where your token sends the analysis.
 
 ### The analyzers
 
@@ -246,7 +250,7 @@ The build only passes on the settings an analysis needs, picked by name:
 
 Everything else stays behind:
 
-- the server, the token and the project key;
+- the server, the token, the project key and the organization;
 - scanner and branch settings;
 - anything that would start a program, like a JDBC driver or Node.js;
 - the settings that decide each file's language: file suffixes and patterns, and

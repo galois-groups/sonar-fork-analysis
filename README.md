@@ -206,9 +206,14 @@ jobs:
 ```
 
 Put your build workflow's name in `workflows`, here `Build`. Use the same
-`project-key` in both workflows because it also names the artifact.
-`statuses: write` is optional: it lets the action post a status on the pull
-request.
+`project-key` and `sonar-organization` in both workflows. The project key also
+names the artifact. The permissions are for:
+
+- `actions: read`: downloading the build's artifact;
+- `contents: read`: fetching the pull request's commit from your repository;
+- `pull-requests: read`: looking up the pull request through GitHub's API,
+  instead of trusting the artifact;
+- `statuses: write`: posting a status on the pull request. It's optional.
 
 ### 4. Require Sonar's check
 

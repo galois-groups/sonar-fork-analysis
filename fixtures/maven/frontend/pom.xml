@@ -22,34 +22,36 @@
     <build>
         <plugins>
             <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>exec-maven-plugin</artifactId>
+                <groupId>com.github.eirslett</groupId>
+                <artifactId>frontend-maven-plugin</artifactId>
+                <configuration>
+                    <!-- An exact release: the plugin can't read .node-version, so keep it on the major there. -->
+                    <nodeVersion>v24.22.0</nodeVersion>
+                </configuration>
                 <executions>
                     <execution>
-                        <id>npm-ci</id>
-                        <phase>generate-resources</phase>
+                        <id>install-node-and-npm</id>
                         <goals>
-                            <goal>exec</goal>
+                            <goal>install-node-and-npm</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>npm-ci</id>
+                        <goals>
+                            <goal>npm</goal>
                         </goals>
                         <configuration>
-                            <executable>npm</executable>
-                            <arguments>
-                                <argument>ci</argument>
-                                <argument>--ignore-scripts</argument>
-                            </arguments>
+                            <arguments>ci --ignore-scripts</arguments>
                         </configuration>
                     </execution>
                     <execution>
                         <id>npm-test</id>
                         <phase>test</phase>
                         <goals>
-                            <goal>exec</goal>
+                            <goal>npm</goal>
                         </goals>
                         <configuration>
-                            <executable>npm</executable>
-                            <arguments>
-                                <argument>test</argument>
-                            </arguments>
+                            <arguments>test</arguments>
                         </configuration>
                     </execution>
                 </executions>

@@ -17,6 +17,8 @@ Thumbs.db
 target/
 build/
 .gradle/
+# The Node and npm frontend-maven-plugin installs.
+fixtures/maven/frontend/node/
 
 # Fake packages for the Node fixtures' traps; no package manager touches this directory.
 !fixtures/node_modules

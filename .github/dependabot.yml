@@ -8,6 +8,8 @@ updates:
     # A compromised release is usually caught within days; security updates are not delayed.
     cooldown:
       default-days: 7
+      # This action's own releases, which nobody else can publish.
+      exclude: ['galois-groups/sonar-fork-analysis']
     groups:
       github-actions:
         patterns: ['*']

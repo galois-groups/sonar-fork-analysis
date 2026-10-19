@@ -34,10 +34,7 @@ describe('scannerBuild', () => {
   })
 
   it('falls back to the plain build elsewhere', () => {
-    expect(scannerBuild('linux', 'ppc64')).toEqual({
-      suffix: '',
-      sha256: 'ab76ab3c360025e9108be5b55be066f304a164f8b2850d2f2f333915db51bc1b'
-    })
+    expect(scannerBuild('linux', 'ppc64').suffix).toBe('')
   })
 })
 

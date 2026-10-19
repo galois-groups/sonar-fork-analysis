@@ -75989,32 +75989,32 @@ function _getGlobal(key, defaultValue) {
 	return value !== void 0 ? value : defaultValue;
 }
 // src/scanner.ts
-var VERSION = "8.1.0.6389";
+var VERSION = "8.2.0.6438";
 var BUNDLED = {
 	"linux-x64": {
 		suffix: "-linux-x64",
-		sha256: "bb8f709f9cb73352f8d1260a3b3c506c0f41146754bc630762c126d795499d0b"
+		sha256: "83257bf97a475d626b8ba2b214aeeb37334ca84db1b3e3be5105783e4facb053"
 	},
 	"linux-arm64": {
 		suffix: "-linux-aarch64",
-		sha256: "5e1c9328f4e261838de778c9e586ee608cca45ff7f0538108642219214628ba5"
+		sha256: "3add94b481f1d541897b8d667f4c0e86bc7855bd3eaeb1a7c9ee5f162b909e6e"
 	},
 	"darwin-x64": {
 		suffix: "-macosx-x64",
-		sha256: "8afc8bbff9008434e53b31cb681333ff643b999f84ca537db573d0fae8883cdc"
+		sha256: "6205a8add7d58fdc0a56c62fa0c8a2c52777b1bae38112b9b98ff4fc7bb9df8b"
 	},
 	"darwin-arm64": {
 		suffix: "-macosx-aarch64",
-		sha256: "20d12be4081896b337cd873d98ebd3d554be666086a45e31dd84a12ef51c3688"
+		sha256: "72164dd87ddfe176f35859d1eed38011dd0ce9655b89243b8d3ae9b816390e29"
 	},
 	"win32-x64": {
 		suffix: "-windows-x64",
-		sha256: "73f0e71928673d5b2f39bb86213342a30e51a14c8eec345164016bb29c8df8ee"
+		sha256: "897ff904608a5ec07dbff509bd1224800d524acf5559058f1c7ea85744779173"
 	}
 };
 var PLAIN = {
 	suffix: "",
-	sha256: "ab76ab3c360025e9108be5b55be066f304a164f8b2850d2f2f333915db51bc1b"
+	sha256: "2f1f412ad4c36d23266371367e13214fea03add397fb789bbb3282fdc9fb1372"
 };
 function scannerBuild(platform, arch) {
 	return BUNDLED[`${platform}-${arch}`] ?? PLAIN;

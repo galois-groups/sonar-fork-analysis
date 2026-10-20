@@ -1,6 +1,6 @@
-# Checks what the analysis assumes about the scanner against the real one: the CLI the action pins,
-# and the engines SonarCloud and SonarQube serve, which change on Sonar's schedule, hence the weekly
-# run, which also reports a newer CLI.
+# Checks what the analysis assumes about the scanner against the real one: each CLI the action is
+# tested with, and the engines SonarCloud and SonarQube serve, which change on Sonar's schedule, hence
+# the weekly run, which also reports a newer CLI.
 name: 'Scanner and engines'
 on:
   push:
@@ -13,10 +13,36 @@ on:
 permissions:
   contents: read
 jobs:
+  # Nothing else notices a new CLI. Not on pull requests, which a release elsewhere shouldn't fail.
+  newer:
+    name: 'Check for a newer scanner CLI'
+    if:
+      github.event_name == 'schedule' || github.event_name ==
+      'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout project'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 'Set up Node.js'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+
+      - name: 'Check for a newer scanner CLI'
+        run: npm run scanner:check
+
   scanner:
-    name: 'Check against the real scanner'
+    name: 'Check against CLI ${{ matrix.version }}'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # TESTED_VERSIONS in src/scanner.ts.
+        version: ['8.0.1.6346', '8.1.0.6389', '8.2.0.6438']
     steps:
       - name: 'Checkout project'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -40,7 +66,7 @@ jobs:
 
       # Keyed by what the engines are today, so a new engine is a new cache entry. The checks verify a
       # restored engine like a downloaded one; the CLI is never cached, so the action's installer always
-      # checks its hash.
+      # checks its signature.
       - name: 'Identify the current engines'
         id: engines
         run: |
@@ -60,11 +86,16 @@ jobs:
         run: npm run test:scanner
         env:
           SCANNER_ENGINES: ${{ runner.temp }}/engines
+          SCANNER_VERSION: ${{ matrix.version }}
 
-      # Nothing else notices a new CLI, as the action pins it by hash. Not on pull requests, which a
-      # release elsewhere shouldn't fail.
-      - name: 'Check for a newer scanner CLI'
-        if:
-          github.event_name == 'schedule' || github.event_name ==
-          'workflow_dispatch'
-        run: npm run scanner:check
+  # The branch ruleset requires this name, whatever versions the matrix holds.
+  result:
+    name: 'Every CLI check passed'
+    needs: scanner
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Fail unless every version passed'
+        run: '[ "$RESULT" = success ]'
+        env:
+          RESULT: ${{ needs.scanner.result }}

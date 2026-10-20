@@ -42,13 +42,15 @@
     "@actions/artifact": "^6.3.1",
     "@actions/core": "^3.0.0",
     "@actions/exec": "^3.0.0",
-    "@actions/tool-cache": "^4.0.0"
+    "@actions/tool-cache": "^4.0.0",
+    "openpgp": "^6.3.2"
   },
   "devDependencies": {
     "@actions/workflow-parser": "^0.3.61",
     "@eslint-community/eslint-plugin-eslint-comments": "^4.8.1",
     "@eslint/js": "^10.0.1",
     "@octokit/openapi-webhooks-types": "^12.2.0",
+    "@openpgp/web-stream-tools": "^0.3.1",
     "@sonar/scan": "^5.0.1",
     "@types/node": "^24.19.2",
     "@vitest/coverage-v8": "^5.0.3",

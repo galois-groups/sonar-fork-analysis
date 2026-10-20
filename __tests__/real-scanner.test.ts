@@ -1,6 +1,7 @@
-// Checks what the analysis assumes about the scanner against the real one: the CLI the action pins,
-// and the engines SonarCloud and the latest SonarQube serve, which change without notice. They are
-// downloaded, so the checks only run when SCANNER_CHECKS is set, as the Scanner workflow does.
+// Checks what the analysis assumes about the scanner against the real one: a CLI the action is tested
+// with (SCANNER_VERSION, else the default), and the engines SonarCloud and the latest SonarQube serve,
+// which change without notice. They are downloaded, so the checks only run when SCANNER_CHECKS is set,
+// as the Scanner workflow does.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { spawnSync } from 'node:child_process'
 import {
@@ -17,6 +18,9 @@ import { posixIt } from '../__fixtures__/platform.js'
 import { formatProperties } from '../src/analyze.js'
 import { NO_FILE, TESTED_LANGUAGES } from '../src/languages.js'
 import { REREAD_PATH, moduleTree } from '../src/settings.js'
+import { signingKey } from '../src/scanner.js'
+import { SONARSOURCE_KEY, checkSignature } from '../src/signature.js'
+import type { PublicKey } from 'openpgp'
 import {
   engineEntry,
   moduleSettings,
@@ -428,6 +432,48 @@ describeScanner("SonarCloud's languages", () => {
     expect(TESTED_LANGUAGES.filter((key) => !keys.includes(key))).toEqual([])
     // The analysis refuses a list with any other key.
     expect(keys.filter((key) => !/^\w+$/.test(key))).toEqual([])
+  })
+})
+
+// The signature checks on SonarSource's own key and signatures, as the key servers and Sonar serve them
+// today. Only the key servers' copies carry the revocations: if they stopped serving one, the action
+// would trust the revoked subkey again.
+describeScanner("SonarSource's key and signatures", () => {
+  let key: PublicKey
+
+  const signature = async (name: string): Promise<string> => {
+    const response = await fetch(
+      `https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/${name}.zip.asc`,
+      { signal: AbortSignal.timeout(60_000) }
+    )
+    expect(response.status).toBe(200)
+    return response.text()
+  }
+
+  beforeAll(async () => {
+    key = await signingKey()
+  }, 120_000)
+
+  it('come from the key the action pins', () => {
+    expect(key.getFingerprint()).toBe(SONARSOURCE_KEY)
+  })
+
+  it('still mark the subkey revoked as compromised', async () => {
+    const name = 'sonar-scanner-cli-7.3.0.5189'
+    await expect(
+      checkSignature(new Uint8Array(), await signature(name), key, name)
+    ).rejects.toThrow(
+      `${name} is signed with the subkey 2161D72E7DCD4258, which SonarSource revoked on 2025-11-30: key compromised`
+    )
+  })
+
+  it("name the valid subkey whose signature the data doesn't match", async () => {
+    const name = 'sonar-scanner-cli-8.2.0.6438'
+    await expect(
+      checkSignature(new Uint8Array(), await signature(name), key, name)
+    ).rejects.toThrow(
+      `${name} doesn't match its signature by the subkey C33B56C147B01975`
+    )
   })
 })
 

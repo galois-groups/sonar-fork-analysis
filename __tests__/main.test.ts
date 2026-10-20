@@ -30,8 +30,12 @@ import { NO_FILE } from '../src/languages.js'
 // Mocks must be declared before the module under test is imported.
 vi.doMock('@actions/core', () => core)
 vi.doMock('@actions/exec', () => ({ exec, getExecOutput }))
-vi.doMock('../src/scanner.js', () => ({
-  installScanner: async () => '/opt/sonar-scanner/bin/sonar-scanner'
+const installScanner = vi.fn<(version?: string) => Promise<string>>(
+  async () => '/opt/sonar-scanner/bin/sonar-scanner'
+)
+vi.doMock('../src/scanner.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/scanner.js')>()),
+  installScanner
 }))
 vi.doMock('@actions/artifact', () => artifact)
 // The server's languages, which the analysis asks for.
@@ -42,6 +46,7 @@ vi.doMock('../src/languages.js', async (importOriginal) => ({
 }))
 
 const { run } = await import('../src/main.js')
+const { DEFAULT_VERSION } = await import('../src/scanner.js')
 
 const TOKEN = 'sqa_not_a_real_token'
 let project: string
@@ -233,6 +238,40 @@ describe('run', () => {
     expect(args).toEqual(expectedArgs)
     expect(options!.cwd).toBe(project)
     expect(options!.env!.SONAR_TOKEN).toBe(TOKEN)
+  })
+
+  it('runs the scanner CLI the workflow names, else the default', async () => {
+    rmSync(join(project, 'pom.xml'))
+    writeFileSync(join(project, 'sonar-project.properties'), 'sonar.sources=.')
+    exec.mockImplementation(async (_tool, _args, options) => {
+      const work = join(options!.cwd!, '.scannerwork')
+      mkdirSync(work, { recursive: true })
+      writeFileSync(join(work, 'report-task.txt'), `ceTaskId=${++analyses}\n`)
+      return 0
+    })
+
+    await run()
+    inputs['scanner-version'] = '8.1.0.6389'
+    await run()
+
+    expect(core.setFailed).not.toHaveBeenCalled()
+    expect(installScanner.mock.calls).toEqual([
+      [DEFAULT_VERSION],
+      ['8.1.0.6389']
+    ])
+  })
+
+  it('refuses a scanner version that is not one', async () => {
+    inputs['scanner-version'] = '../8.1'
+
+    await run()
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'scanner-version must be a full scanner CLI version'
+      )
+    )
+    expect(exec).not.toHaveBeenCalled()
   })
 
   it('reports a failed build with its exit code', async () => {

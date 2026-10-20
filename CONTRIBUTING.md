@@ -29,10 +29,14 @@ The fixtures' fork-path analyses also record every program the scanner starts.
 If Sonar adds a helper program, the check fails and shows its command line.
 Review it, then add its path to `.github/fork-path-programs.txt`.
 
-The action pins the scanner CLI by hash. When the weekly run of Scanner and
-engines reports a newer one, run `npm run scanner:update`. It pins the new
-scanner with the digests Sonar publishes. Then run `npm run bundle` and open a
-pull request.
+The action runs the newest scanner CLI in `TESTED_VERSIONS` (`src/scanner.ts`),
+unless a workflow sets `scanner-version`. When the weekly run of Scanner and
+engines reports a newer release, run `npm run scanner:update`. It checks the new
+release's signature and makes it the default. The old default stays in the list.
+The workflows list the versions too: add the new one to the matrix in
+`scanner.yml` and the old default to the one in `fixtures.yml`. Then run
+`npm run bundle` and open a pull request. Its checks run the real scanner and
+the fixtures with every version in the list.
 
 To run the action locally, copy `.env.example` to `.env`, edit it and run
 `npm run local`.

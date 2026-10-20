@@ -94,12 +94,16 @@ async function direct(inputs: Inputs): Promise<void> {
   const env = { ...jobEnvironment(), SONAR_TOKEN: inputs.token }
   const reportsBefore = snapshotReports(workingDirectory)
   let errorOutput = ''
-  const exitCode = await exec(await executable(tool), args, {
-    cwd: workingDirectory,
-    env,
-    ignoreReturnCode: true,
-    listeners: { stderr: (data) => (errorOutput += data.toString()) }
-  })
+  const exitCode = await exec(
+    await executable(tool, inputs.scannerVersion),
+    args,
+    {
+      cwd: workingDirectory,
+      env,
+      ignoreReturnCode: true,
+      listeners: { stderr: (data) => (errorOutput += data.toString()) }
+    }
+  )
   if (exitCode !== 0) throw new Error(buildFailure(tool, exitCode, errorOutput))
   // Sanity check against misconfiguration, e.g. Gradle running another task matching 'sonar'. Not a
   // guarantee: the build can write any report it likes.
@@ -245,13 +249,19 @@ async function simulate(
   const collect = (data: Buffer): void => {
     errorOutput += data.toString()
   }
-  const exitCode = await exec(await executable(tool), args, {
-    cwd: workingDirectory,
-    env,
-    ignoreReturnCode: true,
-    // The npm scanner prints its errors to standard output.
-    listeners: npm ? { stdout: collect, stderr: collect } : { stderr: collect }
-  })
+  const exitCode = await exec(
+    await executable(tool, inputs.scannerVersion),
+    args,
+    {
+      cwd: workingDirectory,
+      env,
+      ignoreReturnCode: true,
+      // The npm scanner prints its errors to standard output.
+      listeners: npm
+        ? { stdout: collect, stderr: collect }
+        : { stderr: collect }
+    }
+  )
   if (exitCode !== 0) throw new Error(buildFailure(tool, exitCode, errorOutput))
   if (!existsSync(dump)) throw new Error(missingDump(tool))
 
@@ -321,9 +331,9 @@ function warnWithoutSettings(
     )
 }
 
-// Without a build to run, the action runs the scanner CLI it pins.
-async function executable(tool: BuildTool): Promise<string> {
-  return tool.name === 'scanner' ? installScanner() : tool.executable
+// Without a build to run, the action runs the scanner CLI itself.
+async function executable(tool: BuildTool, version: string): Promise<string> {
+  return tool.name === 'scanner' ? installScanner(version) : tool.executable
 }
 
 function tempDirectory(): string {
@@ -559,7 +569,7 @@ async function analyzeCommit(
   writeFileSync(settingsFile, formatProperties(properties))
 
   logUntestedLanguages(untestedLanguages(languages), inputs.buildArguments)
-  const scanner = await installScanner()
+  const scanner = await installScanner(inputs.scannerVersion)
   core.info(`Analysing ${name}`)
   const env = toolEnvironment()
   env.SONAR_TOKEN = inputs.token

@@ -12,6 +12,11 @@ on:
         description: The action's mode.
         type: string
         default: auto
+      scanner-version:
+        description:
+          The scanner CLI to analyse with; empty for the action's default.
+        type: string
+        default: ''
     secrets:
       SONAR_TOKEN:
         required: false
@@ -44,6 +49,10 @@ jobs:
     # Without the token, e.g. on Dependabot's pull requests, Fixtures skips the analysis.
     env:
       HAS_SONAR_TOKEN: ${{ secrets.SONAR_TOKEN != '' }}
+      # One name per fixture and CLI: Fixtures analyses each artifact with several CLIs in one run.
+      LAUNCHES:
+        launches-${{ matrix.fixture }}${{ inputs.scanner-version && '-' || ''
+        }}${{ inputs.scanner-version }}
     steps:
       # The analysis must never run the analysed code, whatever the scanner or Sonar adds. Fake build
       # tools on the PATH record any run and fail it. Fake Java, wget and curl do the same. The
@@ -93,6 +102,7 @@ jobs:
           JAVA_HOME: ${{ runner.temp }}/traps/jdk
         with:
           mode: ${{ inputs.mode }}
+          scanner-version: ${{ inputs.scanner-version }}
           project-key:
             galois-groups_sonar-fork-analysis_${{ matrix.fixture }}_split
           sonar-organization: galois-groups
@@ -114,24 +124,23 @@ jobs:
           fi
           # Stopping the service writes out the records it still holds.
           sudo service auditd stop
-          sudo ausearch --input-logs --raw -k sonar-fork-analysis | tee "$RUNNER_TEMP/launches-$FIXTURE.log" > /dev/null
+          sudo ausearch --input-logs --raw -k sonar-fork-analysis | tee "$RUNNER_TEMP/$LAUNCHES.log" > /dev/null
           # Anyone can download the artifact, so the records must not hold the token, in plain or hexadecimal.
           hex="$(printf %s "$SONAR_TOKEN" | od -An -tx1 | tr -d ' \n' | tr a-f A-F)"
-          if grep -q -F -e "$SONAR_TOKEN" -e "$hex" "$RUNNER_TEMP/launches-$FIXTURE.log"; then
-            rm "$RUNNER_TEMP/launches-$FIXTURE.log"
+          if grep -q -F -e "$SONAR_TOKEN" -e "$hex" "$RUNNER_TEMP/$LAUNCHES.log"; then
+            rm "$RUNNER_TEMP/$LAUNCHES.log"
             echo '::error::The audit records hold the Sonar token.'
             exit 1
           fi
         env:
-          FIXTURE: ${{ matrix.fixture }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       - name: 'Upload the program starts'
         if: always() && steps.stop.outcome == 'success'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: launches-${{ matrix.fixture }}
-          path: ${{ runner.temp }}/launches-${{ matrix.fixture }}.log
+          name: ${{ env.LAUNCHES }}
+          path: ${{ runner.temp }}/${{ env.LAUNCHES }}.log
           retention-days: 3
           if-no-files-found: error
 

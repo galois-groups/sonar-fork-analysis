@@ -33,7 +33,8 @@ the features off:
   [dependency review action](https://github.com/actions/dependency-review-action)
   can check dependencies without any secrets.
 - **Build-system autoconfiguration** is part of the engine of both SonarQube
-  Cloud and SonarQube. It can run `mvnw` to configure the project.
+  Cloud and SonarQube. It can run `mvnw` or the project's Gradle build to
+  configure the project.
 
 Don't turn either back on with `build-arguments` in the Sonar workflow, for
 example with `-Dsonar.sca.enabled=true`. That would run the pull request's build

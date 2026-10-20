@@ -1,5 +1,5 @@
 # Engine classes that can start a process, as listed by ScannerProbe processes, with why each is
-# safe on the fork path. Last reviewed on sonarcloud-scanner-engine-13.14.0.6149.
+# safe on the fork path. Last reviewed on sonarcloud-scanner-engine-13.16.0.6705.
 # Unmarked entries are libraries bundled in the engine; JGit runs hooks and filters only from the
 # .git the action creates.
 com/google/common/util/concurrent/ForwardingListenableFuture
@@ -39,6 +39,9 @@ org/eclipse/jgit/util/FS_POSIX
 org/eclipse/jgit/util/FS_Win32
 org/eclipse/jgit/util/FS_Win32_Cygwin
 org/eclipse/jgit/util/SshSupport
+org/gradle/internal/impldep/com/google/common/util/concurrent/ForwardingListenableFuture  # Gradle's own Guava, for the Gradle autoconfiguration below
+org/gradle/internal/impldep/com/google/common/util/concurrent/ListenableFutureTask  # Gradle's own Guava, for the Gradle autoconfiguration below
+org/gradle/wrapper/Install  # build system autoconfiguration runs the checkout's Gradle build: off, sonar.scanner.autoconfig.enabled=false
 org/sonar/api/utils/command/CommandExecutor  # the plugin API for running commands; plugins are outside this check
 org/sonar/scanner/buildsystem/maven/MavenBuildSystemModelReader  # build system autoconfiguration runs the checkout's mvnw: off, sonar.scanner.autoconfig.enabled=false
 org/sonar/scanner/process/executor/ProcessWrapperFactory  # the engine's process helper itself

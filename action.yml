@@ -41,6 +41,12 @@ inputs:
       SONAR_HOST_URL. Direct analyses also fall back to the build's own
       sonar.host.url, analyze mode doesn't.
     default: ''
+  scanner-version:
+    description: >
+      The Sonar scanner CLI to run in analyze mode and for the scanner build
+      tool, such as 8.2.0.6438. Leave empty for the newest one this action is
+      tested with. Any version must carry SonarSource's signature.
+    default: ''
   sonar-token:
     description:
       'The Sonar token. Empty on pull requests from forks, which is what selects

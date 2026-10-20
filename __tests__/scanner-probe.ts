@@ -15,8 +15,14 @@ import { delimiter, dirname, join, resolve } from 'node:path'
 import { crc32, inflateRawSync } from 'node:zlib'
 import { installScanner } from '../src/scanner.js'
 
+// The Scanner workflow checks each tested version in turn, named by SCANNER_VERSION.
 export async function cliJar(): Promise<string> {
-  const lib = join(dirname(dirname(await installScanner())), 'lib')
+  const lib = join(
+    dirname(
+      dirname(await installScanner(process.env.SCANNER_VERSION || undefined))
+    ),
+    'lib'
+  )
   const jar = readdirSync(lib).find((name) =>
     name.startsWith('sonar-scanner-cli-')
   ) as string

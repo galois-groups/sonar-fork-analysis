@@ -17,6 +17,7 @@ required checks, recipes for common setups, supported runners and limitations.
 | `build-goals`        | No                    | `verify` / `check` | Maven goals or Gradle tasks to run. Not with `npm` or `scanner`.                                                                                                                                        |
 | `build-arguments`    | No                    |                    | Extra build flags. In the Sonar workflow they're passed to the scanner instead, for example `-Dsonar.projectName=App`. The scanner doesn't run in the checkout there, so use absolute paths.            |
 | `github-token`       | No                    | `github.token`     | Used to download the build's artifact, look up the pull request, check it out and post the status.                                                                                                      |
+| `scanner-version`    | No                    | newest tested      | The version of Sonar's scanner CLI, such as `8.1.0.6389`. See [the scanner CLI](#the-scanner-cli).                                                                                                      |
 
 `build-goals` and `build-arguments` take one entry per line, so write several as
 a YAML block:
@@ -62,6 +63,23 @@ The action also passes the type declarations in your `node_modules` to the Sonar
 workflow. It passes the links your package manager makes there too. Rules that
 need types then work on pull requests from forks as well, even across the
 packages of a monorepo.
+
+## The scanner CLI
+
+The Sonar workflow always analyses with Sonar's scanner CLI. So does the build
+with `build-tool: scanner`. Maven, Gradle and npm builds use Sonar's plugin or
+npm package instead, so `scanner-version` doesn't apply to them.
+
+The action runs the newest scanner CLI it's tested with, unless
+`scanner-version` names another one. The tested versions are in
+[`TESTED_VERSIONS`](../src/scanner.ts). Any other version runs with a warning.
+This project hasn't checked how such a version reads the analysis settings or
+which programs it starts.
+
+The action checks every scanner it downloads against SonarSource's signature. It
+gets SonarSource's key from keys.openpgp.org and keyserver.ubuntu.com, so the
+runner must reach at least one of them. Versions before 8.0.1 fail the check.
+SonarSource revoked the key that signed them as compromised.
 
 ## Commit statuses and required checks
 
@@ -344,8 +362,8 @@ Tested and untested mean the same as for
   Java on the `PATH`. Alpine images can't run the bundled Java. Projects on a
   newer Java than the scanner's may need `setup-java` and `-Dsonar.java.jdkHome`
   in `build-arguments`.
-- Each release of the action runs one fixed version of Sonar's scanner. You
-  can't change it. To get a newer one, update the action.
+- The scanner's signature check needs keys.openpgp.org or keyserver.ubuntu.com.
+  A runner that reaches neither can't analyse.
 - SonarQube Server needs an edition that supports pull request analysis. The
   action is tested against SonarQube Cloud and the latest SonarQube Community
   Build.

@@ -94,11 +94,11 @@ picks the mode from the event and whether there's a token.
 
 On the fork path, the build collects its settings without running the analysis.
 It uses simulation mode (`sonar.scanner.internal.dumpToFile`), a feature of
-Sonar's plugins for Maven and Gradle, of its npm scanner and of the scanner the
-action pins. Sonar uses it in its own tests but doesn't document it. So a
-release could change it. If it stops working, the build fails with a message
-that no analysis settings were written. This project's tests keep up with the
-latest plugins and npm scanner, so such a change should show up here first.
+Sonar's plugins for Maven and Gradle, of its npm scanner and of its scanner CLI.
+Sonar uses it in its own tests but doesn't document it. So a release could
+change it. If it stops working, the build fails with a message that no analysis
+settings were written. This project's tests keep up with the latest plugins and
+npm scanner, so such a change should show up here first.
 
 The npm scanner writes its settings in a format of its own, which the action
 converts. Before it writes them, it would ask the server for its version, its
@@ -281,9 +281,10 @@ autoconfiguration and the engine's habit of running `dotnet` to collect
 analytics all came in updates like these.
 
 So this project tests against the real scanner and engines on every pull request
-and once a week. It uses the scanner CLI it pins and the engines that SonarQube
-Cloud and the latest SonarQube Community Build currently serve. The tests check
-that:
+and once a week. It uses each
+[scanner CLI it's tested with](configuration.md#the-scanner-cli) and the engines
+that SonarQube Cloud and the latest SonarQube Community Build currently serve.
+The tests check that:
 
 - the scanner reads settings exactly as the action checked them;
 - the engine builds the same modules as the action;
@@ -318,6 +319,10 @@ compares them with the programs the scanner, the engine and the analyzers are
 known to start. Any other program fails the run. A container started anywhere on
 the machine during the analysis fails it too. The record only shows which
 programs start, not what a program does once it runs.
+
+The scanner CLI decides how Java and the engine start, so each tested CLI
+analyses every sample project under these traps. Only the default CLI's results
+are compared with the direct analysis.
 
 One sample project also holds a Python file with a known issue. It checks that
 untested languages stay off on the fork path. The direct analysis must report

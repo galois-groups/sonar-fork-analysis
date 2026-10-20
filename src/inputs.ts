@@ -1,4 +1,5 @@
 import * as core from '@actions/core'
+import { scannerVersion } from './scanner.js'
 
 // Mirrors the defaults in action.yml. They are repeated here because an input passed explicitly as
 // an empty string (e.g. a reusable workflow forwarding an unset input) does not get the default.
@@ -19,6 +20,7 @@ export type Inputs = {
   hostUrl: string
   token: string
   githubToken: string
+  scannerVersion: string
 }
 
 function input(name: string): string {
@@ -42,6 +44,7 @@ export function readInputs(): Inputs {
     organization: input('sonar-organization'),
     hostUrl: input('sonar-host-url'),
     token: input('sonar-token'),
-    githubToken: input('github-token')
+    githubToken: input('github-token'),
+    scannerVersion: scannerVersion(input('scanner-version'))
   }
 }

@@ -317,3 +317,30 @@ jobs:
           DIRECT_ONLY:
             ${{ matrix.fixture == 'infra' && 'python/decoy.py' || '' }}
           LANGUAGES: java,kotlin,js,ts,css,web,xml,yaml,json,docker,terraform,azureresourcemanager,shell,powershell
+
+  # The same prepared artifacts, analysed with each other tested CLI, with the same traps and checks of
+  # the programs started. After the comparison, which reads what the default CLI's analysis found: these
+  # analyses replace it in SonarCloud. One CLI at a time, as SonarCloud refuses a pull request's
+  # analysis that started before the last one it processed. Outside workflow_run the action posts no
+  # status.
+  other-scanners:
+    name: 'Fork path with CLI ${{ matrix.version }}'
+    needs: [prepare, compare]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' }}
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+      statuses: write
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        # TESTED_VERSIONS in src/scanner.ts without the default, which the fork path above runs.
+        version: ['8.0.1.6346', '8.1.0.6389']
+    uses: $/.github/workflows/fork-path.yml
+    with:
+      mode: analyze
+      scanner-version: ${{ matrix.version }}
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

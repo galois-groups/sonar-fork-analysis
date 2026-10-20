@@ -30,8 +30,12 @@ import { NO_FILE } from '../src/languages.js'
 // Mocks must be declared before the module under test is imported.
 vi.doMock('@actions/core', () => core)
 vi.doMock('@actions/exec', () => ({ exec, getExecOutput }))
-vi.doMock('../src/scanner.js', () => ({
-  installScanner: async () => '/opt/sonar-scanner/bin/sonar-scanner'
+const installScanner = vi.fn<(version?: string) => Promise<string>>(
+  async () => '/opt/sonar-scanner/bin/sonar-scanner'
+)
+vi.doMock('../src/scanner.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/scanner.js')>()),
+  installScanner
 }))
 vi.doMock('@actions/artifact', () => artifact)
 // The server's languages, which the analysis asks for.
@@ -42,6 +46,7 @@ vi.doMock('../src/languages.js', async (importOriginal) => ({
 }))
 
 const { run } = await import('../src/main.js')
+const { DEFAULT_VERSION } = await import('../src/scanner.js')
 
 const TOKEN = 'sqa_not_a_real_token'
 let project: string
@@ -233,6 +238,40 @@ describe('run', () => {
     expect(args).toEqual(expectedArgs)
     expect(options!.cwd).toBe(project)
     expect(options!.env!.SONAR_TOKEN).toBe(TOKEN)
+  })
+
+  it('runs the scanner CLI the workflow names, else the default', async () => {
+    rmSync(join(project, 'pom.xml'))
+    writeFileSync(join(project, 'sonar-project.properties'), 'sonar.sources=.')
+    exec.mockImplementation(async (_tool, _args, options) => {
+      const work = join(options!.cwd!, '.scannerwork')
+      mkdirSync(work, { recursive: true })
+      writeFileSync(join(work, 'report-task.txt'), `ceTaskId=${++analyses}\n`)
+      return 0
+    })
+
+    await run()
+    inputs['scanner-version'] = '8.1.0.6389'
+    await run()
+
+    expect(core.setFailed).not.toHaveBeenCalled()
+    expect(installScanner.mock.calls).toEqual([
+      [DEFAULT_VERSION],
+      ['8.1.0.6389']
+    ])
+  })
+
+  it('refuses a scanner version that is not one', async () => {
+    inputs['scanner-version'] = '../8.1'
+
+    await run()
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'scanner-version must be a full scanner CLI version'
+      )
+    )
+    expect(exec).not.toHaveBeenCalled()
   })
 
   it('reports a failed build with its exit code', async () => {
@@ -513,8 +552,9 @@ describe('run in prepare mode', () => {
     expect(core.warning).not.toHaveBeenCalled()
   })
 
-  it('reads a Node project with the scanner it pins, and ships its type declarations', async () => {
+  it('reads a Node project with the scanner CLI, and ships its type declarations', async () => {
     inputs['build-tool'] = 'scanner'
+    inputs['scanner-version'] = '8.1.0.6389'
     rmSync(join(project, 'pom.xml'))
     writeFileSync(join(project, 'package.json'), '{}')
     mkdirSync(join(project, 'src'))
@@ -535,6 +575,7 @@ describe('run in prepare mode', () => {
     expect(core.setFailed).not.toHaveBeenCalled()
     const [tool, args] = exec.mock.calls[0]
     expect(tool).toBe('/opt/sonar-scanner/bin/sonar-scanner')
+    expect(installScanner.mock.calls).toEqual([['8.1.0.6389']])
     expect(args).not.toContain('verify')
     const [, files, staging] = artifact.uploadArtifact.mock.calls[0]
     expect(files).toContain(
@@ -914,6 +955,16 @@ describe('run in analyze mode', () => {
     expect(
       readFileSync(join(project, 'target', 'classes', 'App.class'), 'utf8')
     ).toBe('bytes')
+  })
+
+  it('analyses with the scanner CLI the workflow names', async () => {
+    inputs['scanner-version'] = '8.1.0.6389'
+    prepared({ 'sonar.projectBaseDir': '{workspace}', 'sonar.sources': '' })
+
+    await run()
+
+    expect(core.setFailed).not.toHaveBeenCalled()
+    expect(installScanner.mock.calls).toEqual([['8.1.0.6389']])
   })
 
   it('keeps workflow commands in the scanner output inert', async () => {

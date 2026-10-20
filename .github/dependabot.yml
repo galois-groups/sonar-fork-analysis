@@ -61,7 +61,7 @@ updates:
     groups:
       # What ends up in dist/, so its pull request needs dist/ rebuilt.
       runtime:
-        patterns: ['@actions/*', 'vite']
+        patterns: ['@actions/*', 'openpgp', 'vite']
         exclude-patterns: ['@actions/workflow-parser']
         update-types: ['minor', 'patch']
       development:

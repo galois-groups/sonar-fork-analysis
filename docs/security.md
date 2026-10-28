@@ -56,10 +56,10 @@ about the pull request, not as a review of it.
   [advises against self-hosted runners for public repositories](https://docs.github.com/en/actions/reference/security/secure-use#hardening-for-self-hosted-runners)
   anyway.
 - Pin the action to a commit SHA.
-- Leave `scanner-version` empty, or set one of the
-  [tested versions](configuration.md#the-scanner-cli). The action checks the
-  signature of any version. Only the tested ones are also checked against how
-  the analysis uses them.
+- Leave `scanner-version` empty or set one of the
+  [tested versions](configuration.md#the-scanner-cli). The action checks any
+  version's signature, but only the tested ones are known to read the analysis
+  settings as the action expects and to start only the programs it allows.
 - Give the Sonar job only the permissions from the
   [setup](../README.md#3-add-the-sonar-workflow). Don't add other secrets to it.
   Only add the steps the [recipes](configuration.md#recipes) show.

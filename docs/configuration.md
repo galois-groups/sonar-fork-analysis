@@ -72,14 +72,14 @@ npm package instead, so `scanner-version` doesn't apply to them.
 
 The action runs the newest scanner CLI it's tested with, unless
 `scanner-version` names another one. The tested versions are in
-[`TESTED_VERSIONS`](../src/scanner.ts). Any other version runs with a warning.
-This project hasn't checked how such a version reads the analysis settings or
-which programs it starts.
+[`TESTED_VERSIONS`](../src/scanner.ts). Any other version runs with a warning
+because this project hasn't checked how it reads the analysis settings or which
+programs it starts.
 
 The action checks every scanner it downloads against SonarSource's signature. It
 gets SonarSource's key from keys.openpgp.org and keyserver.ubuntu.com, so the
-runner must reach at least one of them. Versions before 8.0.1 fail the check.
-SonarSource revoked the key that signed them as compromised.
+runner must reach at least one of them. Versions before 8.0.1 fail the check
+because SonarSource revoked the key that signed them as compromised.
 
 ## Commit statuses and required checks
 

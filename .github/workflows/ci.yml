@@ -147,3 +147,16 @@ jobs:
 
       - name: 'Run actionlint'
         uses: $/.github/actions/actionlint
+
+  # The branch ruleset requires this name instead of each job's. A new job must join its needs.
+  result:
+    name: 'Every CI check passed'
+    needs: [action, other-systems, gradle-wrapper, zizmor, actionlint]
+    # Even after a failure: a skipped required check counts as passed.
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Fail unless every job passed'
+        uses: $/.github/actions/all-passed
+        with:
+          needs: ${{ toJSON(needs) }}

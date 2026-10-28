@@ -49,6 +49,12 @@ artifact that the failed run uploads.
 Third-party actions added to a workflow must also be added to the repository's
 allowed actions.
 
+Every workflow that runs on pull requests ends with a summary job, such as
+"Every CI check passed". The branch ruleset requires these instead of each job.
+Add a new job to the `needs` of its workflow's summary job. Otherwise its
+failure won't block a merge. CodeQL is the exception: the ruleset requires its
+code scanning results instead.
+
 To publish a new version, create a release on GitHub with a new `vX.Y.Z` tag.
 Pick a commit whose checks on `main` all passed, including Fixtures Sonar. Tick
 "Publish this Action to the GitHub Marketplace" so that the Marketplace shows

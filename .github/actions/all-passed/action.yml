@@ -1,0 +1,18 @@
+name: 'All passed'
+description:
+  "Fails unless every job the calling job needs succeeded, and names each one
+  that didn't."
+inputs:
+  needs:
+    description: "The calling job's needs: toJSON(needs)."
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: 'Fail unless every job passed'
+      shell: bash
+      run: |
+        failed="$(jq -r 'to_entries[] | select(.value.result != "success") | "\(.key): \(.value.result)"' <<< "$NEEDS")"
+        [ -z "$failed" ] || { echo "$failed"; exit 1; }
+      env:
+        NEEDS: ${{ inputs.needs }}

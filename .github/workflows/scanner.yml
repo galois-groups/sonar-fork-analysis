@@ -88,14 +88,16 @@ jobs:
           SCANNER_ENGINES: ${{ runner.temp }}/engines
           SCANNER_VERSION: ${{ matrix.version }}
 
-  # The branch ruleset requires this name, whatever versions the matrix holds.
+  # The branch ruleset requires this name instead of each job's. A new job must join its needs, except
+  # one that only runs on a schedule.
   result:
     name: 'Every CLI check passed'
-    needs: scanner
+    needs: [scanner]
+    # Even after a failure: a skipped required check counts as passed.
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: 'Fail unless every version passed'
-        run: '[ "$RESULT" = success ]'
-        env:
-          RESULT: ${{ needs.scanner.result }}
+      - name: 'Fail unless every job passed'
+        uses: $/.github/actions/all-passed
+        with:
+          needs: ${{ toJSON(needs) }}

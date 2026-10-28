@@ -344,3 +344,16 @@ jobs:
       scanner-version: ${{ matrix.version }}
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  # The branch ruleset requires this name instead of each job's. A new job must join its needs.
+  result:
+    name: 'Every fixture check passed'
+    needs: [direct, prepare, analyze, other-systems, compare, other-scanners]
+    # Even after a failure: a skipped required check counts as passed.
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Fail unless every job passed'
+        uses: $/.github/actions/all-passed
+        with:
+          needs: ${{ toJSON(needs) }}

@@ -108,27 +108,6 @@ jobs:
           sonar-organization: galois-groups
           sonar-token: ${{ secrets.SONAR_TOKEN }}
 
-  # Its token may write security events, so it runs nothing but the pinned zizmor action.
-  zizmor:
-    name: 'Audit workflows'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
-    steps:
-      - name: 'Checkout project'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      # Audits the workflows and the action for security problems, such as v1's script injection.
-      # Findings go to code scanning, next to CodeQL's, which fails pull requests on those above its
-      # severity threshold.
-      # Without a version, zizmor is the one this action release pins by digest, so Dependabot's
-      # updates of the action update zizmor too.
-      - name: 'Run zizmor'
-        uses: zizmorcore/zizmor-action@85b2b9fb8e3325e7a23d7d0a9d7ba5ae0f999e3e # v0.7.1
-
   # A third-party image with the Docker socket, so its token only reads.
   actionlint:
     name: 'Lint workflows'
@@ -145,7 +124,7 @@ jobs:
   # The branch ruleset requires this name instead of each job's. A new job must join its needs.
   result:
     name: 'Every CI check passed'
-    needs: [checks, test, zizmor, actionlint]
+    needs: [checks, test, actionlint]
     # Even after a failure: a skipped required check counts as passed.
     if: always()
     runs-on: ubuntu-latest

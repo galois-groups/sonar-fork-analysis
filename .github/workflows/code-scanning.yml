@@ -1,4 +1,7 @@
-name: 'CodeQL'
+# GitHub's CodeQL on the code and the workflows, and zizmor on the workflows. Both report to code
+# scanning. The branch ruleset blocks a pull request on their alerts, so this workflow needs no summary
+# job. The weekly run also catches a pinned action that has since become known as vulnerable.
+name: 'Code scanning'
 on:
   push:
     branches:
@@ -39,3 +42,22 @@ jobs:
         uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           category: /language:${{ matrix.language }}
+
+  # Its token may write security events, so it runs nothing but the pinned zizmor action.
+  zizmor:
+    name: 'Audit workflows'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: 'Checkout project'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Audits the workflows and the action for security problems, such as v1's script injection.
+      # Without a version, zizmor is the one this action release pins by digest, so Dependabot's
+      # updates of the action update zizmor too.
+      - name: 'Run zizmor'
+        uses: zizmorcore/zizmor-action@85b2b9fb8e3325e7a23d7d0a9d7ba5ae0f999e3e # v0.7.1

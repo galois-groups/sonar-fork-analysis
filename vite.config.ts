@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 export default defineConfig(({ command }) => ({
   build: {
@@ -18,6 +18,10 @@ export default defineConfig(({ command }) => ({
   ssr: command === 'build' ? { noExternal: true } : {},
   test: {
     include: ['__tests__/**/*.test.ts'],
+    // The checks against the real scanner download it from Sonar: only test:cli and test:engines run them.
+    exclude: process.env.SCANNER_CHECKS
+      ? configDefaults.exclude
+      : [...configDefaults.exclude, '__tests__/real-*.test.ts'],
     setupFiles: ['__fixtures__/environment.ts'],
     clearMocks: true,
     // Tests that write thousands of files take tens of seconds on Windows.

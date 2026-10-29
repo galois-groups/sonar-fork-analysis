@@ -33,7 +33,8 @@
     "scanner:check": "node scripts/scanner-version.ts",
     "scanner:update": "node scripts/scanner-version.ts --update",
     "test": "vitest run",
-    "test:scanner": "SCANNER_CHECKS=1 vitest run __tests__/real-scanner.test.ts --coverage.enabled=false",
+    "test:cli": "SCANNER_CHECKS=1 vitest run __tests__/real-cli.test.ts --coverage.enabled=false",
+    "test:engines": "SCANNER_CHECKS=1 vitest run __tests__/real-engines.test.ts --coverage.enabled=false",
     "typecheck": "npx tsc --project . && npx tsc --project __tests__ && npx tsc --project scripts",
     "all": "npm run format:write && npm run lint && npm run lint:deps && npm run lint:workflows && npm run typecheck && npm run test && npm run package"
   },

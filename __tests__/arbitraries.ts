@@ -165,7 +165,7 @@ export const plausibleModuleSettings = moduleLevel(plausibleModuleId, 3).map(
 )
 
 // How the engine trims a list entry, in two passes (SonarQube's engine 13.7 and SonarCloud's 13.14,
-// checked against both in real-scanner.test.ts): its own, which strips everything up to a space and
+// checked against both in real-engines.test.ts): its own, which strips everything up to a space and
 // drops an entry left empty, then the CSV parser's, which strips Java whitespace, i.e. Unicode spaces
 // but not no-break ones, plus a few control characters.
 // eslint-disable-next-line no-control-regex -- control characters are what it trims

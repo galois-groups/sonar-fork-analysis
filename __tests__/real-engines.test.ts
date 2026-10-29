@@ -1,21 +1,9 @@
-// Checks what the analysis assumes about the scanner against the real one: a CLI the action is tested
-// with (SCANNER_VERSION, else the default), and the engines SonarCloud and the latest SonarQube serve,
-// which change without notice. They are downloaded, so the checks only run when SCANNER_CHECKS is set,
-// as the Scanner workflow does.
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { spawnSync } from 'node:child_process'
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync
-} from 'node:fs'
-import { homedir, tmpdir } from 'node:os'
-import { delimiter, join } from 'node:path'
+// Checks what the analysis assumes about the scanner engine against the real ones, which SonarCloud and
+// the latest SonarQube serve and change without notice. Also SonarCloud's languages and SonarSource's
+// key, as they are today. None of this depends on the scanner CLI's version.
+import { describe, it, expect, beforeAll } from 'vitest'
+import { mkdirSync, readFileSync } from 'node:fs'
 import fc from 'fast-check'
-import { posixIt } from '../__fixtures__/platform.js'
-import { formatProperties } from '../src/analyze.js'
 import { NO_FILE, TESTED_LANGUAGES } from '../src/languages.js'
 import { REREAD_PATH, moduleTree } from '../src/settings.js'
 import { signingKey } from '../src/scanner.js'
@@ -26,122 +14,21 @@ import {
   moduleSettings,
   plausibleModuleSettings,
   settingText,
-  settingsWithoutPlaceholders,
   trustedKeys
 } from './arbitraries.js'
 import {
   Probe,
-  cliJar,
+  engines,
   sonarCloudEngine,
   sonarQubeEngine
 } from './scanner-probe.js'
-
-// Like String.trim, which the CLI applies to every value: everything up to a space goes at both ends.
-const javaTrim = (text: string): string =>
-  // eslint-disable-next-line no-control-regex -- control characters are what it trims
-  text.replace(/^[\x00-\x20]+|[\x00-\x20]+$/g, '')
-
-const describeScanner = process.env.SCANNER_CHECKS ? describe : describe.skip
 
 // Sampled: about 640 trees with 2500 modules get through per 1000; well below that, the check says
 // little.
 const MIN_ACCEPTED = 400
 const MIN_MODULES = 1500
 
-// Downloads are kept between local runs in the user's own cache, never a shared directory; on CI they
-// go to the job's temporary directory. The installer's own leftovers go to a directory of this run.
-const work =
-  process.env.RUNNER_TEMP ??
-  join(homedir(), '.cache', 'sonar-fork-analysis', 'scanner-checks')
-process.env.RUNNER_TOOL_CACHE ??= join(work, 'tools')
-// The Scanner workflow caches the engines in a directory of their own.
-const engines = process.env.SCANNER_ENGINES ?? work
-const runnerTemp = process.env.RUNNER_TEMP
-if (!runnerTemp)
-  process.env.RUNNER_TEMP = mkdtempSync(join(tmpdir(), 'scanner-'))
-
-afterAll(() => {
-  if (!runnerTemp)
-    rmSync(process.env.RUNNER_TEMP as string, { recursive: true, force: true })
-})
-
-describeScanner('the scanner CLI', () => {
-  let probe: Probe
-
-  beforeAll(async () => {
-    mkdirSync(work, { recursive: true })
-    probe = new Probe([await cliJar()])
-  }, 600_000)
-
-  it('reads the settings file back as written, values trimmed', () => {
-    const seed = Date.now()
-    const samples = fc.sample(settingsWithoutPlaceholders, {
-      numRuns: 1000,
-      seed
-    })
-    const read = probe.readSettingsFiles(
-      samples.map((entries) => formatProperties(new Map(entries)))
-    )
-    samples.forEach((entries, index) => {
-      const expected = new Map(
-        entries.map(([key, value]) => [key, javaTrim(value)])
-      )
-      expect({ seed, entries, read: read[index] }).toEqual({
-        seed,
-        entries,
-        read: expected
-      })
-    })
-  })
-
-  it('expands no value the analysis lets through', () => {
-    const seed = Date.now()
-    const piece = fc.constantFrom(
-      '$',
-      '{',
-      '}',
-      '$$',
-      'env.',
-      'NAME',
-      'other',
-      'x',
-      '.',
-      '_',
-      '1',
-      ' ',
-      '\\',
-      'é',
-      '${other}',
-      '${env.NAME}'
-    )
-    // Two that expand for sure, so the check below never depends on chance.
-    const samples = [
-      '${other}',
-      'a${env.NAME}b',
-      ...fc.sample(
-        fc.array(piece, { maxLength: 8 }).map((pieces) => pieces.join('')),
-        { numRuns: 2000, seed }
-      )
-    ]
-    const letThrough = (value: string): boolean => {
-      try {
-        formatProperties(new Map([['value', value]]))
-        return true
-      } catch {
-        return false
-      }
-    }
-    const read = probe.resolvePlaceholders(samples)
-    const changed = samples
-      .filter((value, index) => letThrough(value) && read[index] !== value)
-      .map((value) => ({ value, read: read[samples.indexOf(value)] }))
-    expect({ seed, changed }).toEqual({ seed, changed: [] })
-    // The probe resolves: some of what the analysis refuses does get expanded.
-    expect(read.some((value, index) => value !== samples[index])).toBe(true)
-  })
-})
-
-describeScanner.each([
+describe.each([
   {
     name: 'SonarCloud',
     download: sonarCloudEngine,
@@ -419,7 +306,7 @@ describeScanner.each([
 
 // On the fork path the analysis turns off every language outside TESTED_LANGUAGES. A tested language
 // SonarCloud renames or drops would be turned off with them, silently.
-describeScanner("SonarCloud's languages", () => {
+describe("SonarCloud's languages", () => {
   it('still include every tested language, all named as the analysis expects', async () => {
     const response = await fetch(
       'https://sonarcloud.io/api/languages/list?ps=0'
@@ -438,7 +325,7 @@ describeScanner("SonarCloud's languages", () => {
 // The signature checks on SonarSource's own key and signatures, as the key servers and Sonar serve them
 // today. Only the key servers' copies carry the revocations: if they stopped serving one, the action
 // would trust the revoked subkey again.
-describeScanner("SonarSource's key and signatures", () => {
+describe("SonarSource's key and signatures", () => {
   let key: PublicKey
 
   const signature = async (name: string): Promise<string> => {
@@ -475,44 +362,4 @@ describeScanner("SonarSource's key and signatures", () => {
       `${name} doesn't match its signature by the subkey C33B56C147B01975`
     )
   })
-})
-
-// Dependabot regenerates the fixtures' wrappers, so Fixtures Sonar can't put traps in them. It traps
-// what they need instead: Java on the PATH and in JAVA_HOME, and the wget and curl that mvnw uses to
-// download Maven. If a wrapper update gets past these traps, this test fails.
-describe('the fixture build wrappers', () => {
-  posixIt.each(['fixtures/maven/mvnw', 'fixtures/gradle/gradlew'])(
-    '%s springs the traps',
-    (wrapper) => {
-      const directory = mkdtempSync(join(tmpdir(), 'trap-'))
-      try {
-        const sprung = join(directory, 'sprung')
-        const jdk = join(directory, 'jdk', 'bin')
-        mkdirSync(jdk, { recursive: true })
-        for (const tool of ['java', 'javac', 'wget', 'curl']) {
-          for (const where of [directory, jdk]) {
-            writeFileSync(
-              join(where, tool),
-              `#!/bin/sh\necho "$0 $*" >> "${sprung}"\nexit 1\n`,
-              { mode: 0o755 }
-            )
-          }
-        }
-        const run = spawnSync('sh', [wrapper, '--version'], {
-          env: {
-            ...process.env,
-            PATH: `${directory}${delimiter}${process.env.PATH ?? ''}`,
-            JAVA_HOME: join(directory, 'jdk'),
-            // Not a Maven the machine already downloaded.
-            MAVEN_USER_HOME: join(directory, 'm2')
-          },
-          encoding: 'utf8'
-        })
-        expect(run.status).not.toBe(0)
-        expect(readFileSync(sprung, 'utf8')).not.toBe('')
-      } finally {
-        rmSync(directory, { recursive: true, force: true })
-      }
-    }
-  )
 })

@@ -202,7 +202,7 @@ export function byCodeUnit(a: string, b: string): number {
 }
 
 // Module ids may contain dots (groupId:artifactId), so a key's longest matching prefix can name a
-// different module than the engine's; see real-scanner.test.ts.
+// different module than the engine's; see real-engines.test.ts.
 export function moduleTree(settings: Map<string, string>): ModuleTree {
   const assigned = new Map<string, SplitKey>()
   const prefixes: string[] = []

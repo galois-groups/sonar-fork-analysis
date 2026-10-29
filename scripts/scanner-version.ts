@@ -87,5 +87,5 @@ const updated = source
   .replace(TESTED, `$1'${pinned}', DEFAULT_VERSION$2`)
 writeFileSync(SOURCE, updated)
 console.log(
-  `Made sonar-scanner-cli ${latest} the default, signature checked. Add ${latest} to the matrix in scanner.yml and ${pinned} to the one in fixtures.yml, then run npm run bundle and npm run test:scanner`
+  `Made sonar-scanner-cli ${latest} the default, signature checked. Add ${latest} to the matrix in scanner.yml and ${pinned} to the one in fixtures.yml, then run npm run bundle and npm run test:cli`
 )

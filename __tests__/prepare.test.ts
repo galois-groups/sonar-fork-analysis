@@ -11,7 +11,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve, sep } from 'node:path'
-import { nonRootIt } from '../__fixtures__/platform.js'
+import { runningAsRoot } from '../__fixtures__/platform.js'
 import {
   artifactName,
   npmSimulationProperties,
@@ -495,7 +495,7 @@ describe('typeInformation', () => {
     })
   })
 
-  nonRootIt('skips a directory it cannot read', () => {
+  it.skipIf(runningAsRoot)('skips a directory it cannot read', () => {
     const locked = join(workspace, 'data')
     file(join(locked, 'x'))
     const found = file(join(workspace, 'node_modules/x/index.d.ts'))

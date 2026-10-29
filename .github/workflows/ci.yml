@@ -62,6 +62,10 @@ jobs:
           name: dist
           path: dist/
 
+      # Last: a third-party image, which can write to the checkout, and so to the dist/ uploaded above.
+      - name: 'Lint workflows with actionlint and shellcheck'
+        uses: $/.github/actions/actionlint
+
   # Also on macOS and Windows, whose file systems analyze's checks handle: case-insensitive names, and
   # Windows' aliases of .git.
   test:
@@ -108,23 +112,10 @@ jobs:
           sonar-organization: galois-groups
           sonar-token: ${{ secrets.SONAR_TOKEN }}
 
-  # A third-party image with the Docker socket, so its token only reads.
-  actionlint:
-    name: 'Lint workflows'
-    runs-on: ubuntu-latest
-    steps:
-      - name: 'Checkout project'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: 'Run actionlint'
-        uses: $/.github/actions/actionlint
-
   # The branch ruleset requires this name instead of each job's. A new job must join its needs.
   result:
     name: 'Every CI check passed'
-    needs: [checks, test, actionlint]
+    needs: [checks, test]
     # Even after a failure: a skipped required check counts as passed.
     if: always()
     runs-on: ubuntu-latest

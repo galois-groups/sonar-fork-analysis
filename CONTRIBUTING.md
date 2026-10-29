@@ -17,8 +17,9 @@ Three workflows besides CI check the action:
   checks what the action assumes against the real scanner and the engines
   SonarCloud and SonarQube serve. Sonar updates the engines on its own schedule,
   so the workflow also runs every week and then reports any new scanner release.
-- [![CodeQL](https://github.com/galois-groups/sonar-fork-analysis/actions/workflows/codeql.yml/badge.svg)](https://github.com/galois-groups/sonar-fork-analysis/actions/workflows/codeql.yml)
-  is GitHub's security analysis of the code and the workflows.
+- [![Code scanning](https://github.com/galois-groups/sonar-fork-analysis/actions/workflows/code-scanning.yml/badge.svg)](https://github.com/galois-groups/sonar-fork-analysis/actions/workflows/code-scanning.yml)
+  runs GitHub's CodeQL on the code and the workflows, and zizmor on the
+  workflows.
 
 `npm run test:engines` checks what the action assumes against the engines
 SonarCloud and SonarQube serve. `npm run test:cli` does the same against the
@@ -58,8 +59,8 @@ allowed actions.
 Every workflow that runs on pull requests ends with a summary job, such as
 "Every CI check passed". The branch ruleset requires these instead of each job.
 Add a new job to the `needs` of its workflow's summary job. Otherwise its
-failure won't block a merge. CodeQL is the exception: the ruleset requires its
-code scanning results instead.
+failure won't block a merge. Code scanning is the exception: the ruleset
+requires the results of CodeQL and zizmor instead.
 
 To publish a new version, create a release on GitHub with a new `vX.Y.Z` tag.
 Pick a commit whose checks on `main` all passed, including Fixtures Sonar. Tick

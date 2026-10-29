@@ -99,7 +99,8 @@ jobs:
         run: npm ci
 
       - name: 'Test'
-        run: npm test
+        # Only the Linux run's coverage reaches Sonar.
+        run: npm test -- --coverage.enabled=${{ runner.os == 'Linux' }}
 
       # This repository analysed by its released action, as the README sets it up: directly with the
       # token, through the Sonar workflow without it, on pull requests from forks and Dependabot. Once,

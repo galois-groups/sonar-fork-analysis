@@ -103704,10 +103704,11 @@ function message(error) {
 	return error instanceof Error ? error.message : String(error);
 }
 // src/scanner.ts
-var DEFAULT_VERSION = "8.2.0.6438";
+var DEFAULT_VERSION = "8.3.0.16463";
 var TESTED_VERSIONS = [
 	"8.0.1.6346",
 	"8.1.0.6389",
+	"8.2.0.6438",
 	DEFAULT_VERSION
 ];
 var DOWNLOADS = "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli";

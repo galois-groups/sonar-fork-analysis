@@ -91,7 +91,7 @@ jobs:
       fail-fast: false
       matrix:
         # TESTED_VERSIONS in src/scanner.ts.
-        version: ['8.0.1.6346', '8.1.0.6389', '8.2.0.6438']
+        version: ['8.0.1.6346', '8.1.0.6389', '8.2.0.6438', '8.3.0.16463']
     steps:
       - name: 'Checkout project'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

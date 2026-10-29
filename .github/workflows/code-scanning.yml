@@ -11,8 +11,8 @@ on:
     - cron: '31 7 * * 3'
 permissions: {}
 jobs:
-  analyze:
-    name: 'Analyze ${{ matrix.language }}'
+  codeql:
+    name: 'Analyse ${{ matrix.language }} with CodeQL'
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -45,7 +45,7 @@ jobs:
 
   # Its token may write security events, so it runs nothing but the pinned zizmor action.
   zizmor:
-    name: 'Audit workflows'
+    name: 'Audit workflows with zizmor'
     runs-on: ubuntu-latest
     permissions:
       contents: read

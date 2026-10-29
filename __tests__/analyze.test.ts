@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve, sep } from 'node:path'
 import fc from 'fast-check'
 import { identitiesUnder, landsOn } from '../__fixtures__/identity.js'
-import { invalidUtf8It, posixIt } from '../__fixtures__/platform.js'
+import { macOS, windows } from '../__fixtures__/platform.js'
 import {
   checkNoLinks,
   formatProperties,
@@ -144,26 +144,29 @@ describe('resolveSettings', () => {
     ])
   })
 
-  posixIt('refuses patterns behind placeholders and in checkout paths', () => {
-    mkdirSync(join(workspace, '**'))
-    file(join(workspace, '**/tsconfig.json'))
-    const resolved = resolveSettings(
-      {
-        'sonar.javascript.lcov.reportPaths':
-          '{workspace}/**/lcov.info,{home}/*.info',
-        'sonar.typescript.tsconfigPaths': '**/tsconfig.json'
-      },
-      workspace,
-      home
-    )
-    expect(resolved.properties.get('sonar.javascript.lcov.reportPaths')).toBe(
-      ''
-    )
-    expect(resolved.properties.get('sonar.typescript.tsconfigPaths')).toBe('')
-    expect(resolved.warnings).toHaveLength(3)
-  })
+  it.skipIf(windows)(
+    'refuses patterns behind placeholders and in checkout paths',
+    () => {
+      mkdirSync(join(workspace, '**'))
+      file(join(workspace, '**/tsconfig.json'))
+      const resolved = resolveSettings(
+        {
+          'sonar.javascript.lcov.reportPaths':
+            '{workspace}/**/lcov.info,{home}/*.info',
+          'sonar.typescript.tsconfigPaths': '**/tsconfig.json'
+        },
+        workspace,
+        home
+      )
+      expect(resolved.properties.get('sonar.javascript.lcov.reportPaths')).toBe(
+        ''
+      )
+      expect(resolved.properties.get('sonar.typescript.tsconfigPaths')).toBe('')
+      expect(resolved.warnings).toHaveLength(3)
+    }
+  )
 
-  posixIt(
+  it.skipIf(windows)(
     'refuses a base directory the scanner would read as a pattern',
     () => {
       mkdirSync(join(workspace, '**'))
@@ -206,16 +209,19 @@ describe('resolveSettings', () => {
     expect(resolved.warnings).toHaveLength(4)
   })
 
-  posixIt('drops paths through a link that climbs out of the checkout', () => {
-    climbOut()
-    const resolved = resolveSettings(
-      { 'sonar.java.binaries': '{workspace}/a/leak' },
-      workspace,
-      home
-    )
-    expect(resolved.properties.get('sonar.java.binaries')).toBe('')
-    expect(resolved.warnings).toHaveLength(1)
-  })
+  it.skipIf(windows)(
+    'drops paths through a link that climbs out of the checkout',
+    () => {
+      climbOut()
+      const resolved = resolveSettings(
+        { 'sonar.java.binaries': '{workspace}/a/leak' },
+        workspace,
+        home
+      )
+      expect(resolved.properties.get('sonar.java.binaries')).toBe('')
+      expect(resolved.warnings).toHaveLength(1)
+    }
+  )
 
   it('drops paths that would appear behind a link out of the checkout', () => {
     symlinkSync(outside, join(workspace, 'out'))
@@ -601,7 +607,7 @@ describe('checkNoLinks', () => {
     expect(removeOutwardLinks(workspace)).toHaveLength(4)
   })
 
-  invalidUtf8It('rejects a file name that is not valid UTF-8', () => {
+  it.skipIf(macOS)('rejects a file name that is not valid UTF-8', () => {
     const hidden = hideBehindDecoy(join(artifact, 'a'))
     symlinkSync('/etc/passwd', Buffer.concat([hidden, Buffer.from('/passwd')]))
     expect(() => {
@@ -651,7 +657,7 @@ describe('removeProjectSettings', () => {
 })
 
 describe('removeOutwardLinks', () => {
-  posixIt(
+  it.skipIf(windows)(
     'removes a link that climbs out of the checkout through another link',
     () => {
       climbOut()
@@ -662,7 +668,7 @@ describe('removeOutwardLinks', () => {
     }
   )
 
-  invalidUtf8It(
+  it.skipIf(macOS)(
     'refuses a checkout with a file name that is not valid UTF-8',
     () => {
       const hidden = hideBehindDecoy(join(workspace, 'src'))
@@ -699,7 +705,7 @@ describe('removeOutwardLinks', () => {
 })
 
 describe('resolveSettings and the scanner', () => {
-  posixIt('refuses paths the scanner would read as others', () => {
+  it.skipIf(windows)('refuses paths the scanner would read as others', () => {
     mkdirSync(join(workspace, 'x '))
     symlinkSync(outside, join(workspace, 'x'))
     mkdirSync(join(workspace, 'a\r'))
@@ -718,7 +724,7 @@ describe('resolveSettings and the scanner', () => {
     expect(resolved.warnings).toHaveLength(4)
   })
 
-  posixIt('reads single paths whole, commas included', () => {
+  it.skipIf(windows)('reads single paths whole, commas included', () => {
     // The scanner reads <workspace>/a,<workspace>/b as one path: here, through the link a, to outside.
     mkdirSync(join(workspace, 'a'))
     mkdirSync(join(workspace, 'b'))
@@ -1047,7 +1053,7 @@ describe('recreateLinks', () => {
     )
   })
 
-  posixIt(
+  it.skipIf(windows)(
     'refuses a target that climbs out of the checkout through another link',
     () => {
       climbOut()

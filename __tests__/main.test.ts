@@ -23,7 +23,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import * as artifact from '../__fixtures__/artifact.js'
 import * as core from '../__fixtures__/core.js'
-import { linuxIt } from '../__fixtures__/platform.js'
+import { linux } from '../__fixtures__/platform.js'
 import { exec, getExecOutput } from '../__fixtures__/exec.js'
 import { NO_FILE } from '../src/languages.js'
 
@@ -885,7 +885,7 @@ describe('run in analyze mode', () => {
     ).toBe(true)
   })
 
-  linuxIt(
+  it.runIf(linux)(
     'removes a link to its working directory, which the scanner has elsewhere',
     async () => {
       prepared({ 'sonar.projectBaseDir': '{workspace}' })

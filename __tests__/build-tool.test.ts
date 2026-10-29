@@ -2,7 +2,7 @@ import { describe, it, expect, afterAll } from 'vitest'
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { posixIt } from '../__fixtures__/platform.js'
+import { windows } from '../__fixtures__/platform.js'
 import { detectBuildTool } from '../src/build-tool.js'
 
 const directories: string[] = []
@@ -56,16 +56,19 @@ describe('detectBuildTool', () => {
     })
   })
 
-  posixIt('runs a wrapper without the executable bit through sh', () => {
-    const directory = project('build.gradle')
-    writeFileSync(join(directory, 'gradlew'), '')
-    chmodSync(join(directory, 'gradlew'), 0o644)
-    expect(detectBuildTool(directory)).toEqual({
-      name: 'gradle',
-      executable: 'sh',
-      prefix: ['gradlew']
-    })
-  })
+  it.skipIf(windows)(
+    'runs a wrapper without the executable bit through sh',
+    () => {
+      const directory = project('build.gradle')
+      writeFileSync(join(directory, 'gradlew'), '')
+      chmodSync(join(directory, 'gradlew'), 0o644)
+      expect(detectBuildTool(directory)).toEqual({
+        name: 'gradle',
+        executable: 'sh',
+        prefix: ['gradlew']
+      })
+    }
+  )
 
   it('asks for build-tool when both are present', () => {
     expect(() => detectBuildTool(project('pom.xml', 'build.gradle'))).toThrow(

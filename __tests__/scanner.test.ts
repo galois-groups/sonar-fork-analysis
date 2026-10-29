@@ -20,7 +20,7 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import * as openpgp from 'openpgp'
-import { posixIt } from '../__fixtures__/platform.js'
+import { windows } from '../__fixtures__/platform.js'
 
 const downloadTool = vi.fn<(url: string) => Promise<string>>()
 const extractZip =
@@ -228,7 +228,7 @@ describe('scannerZip', () => {
     )
   })
 
-  posixIt(
+  it.skipIf(windows)(
     'reads and writes through no link where the zip is kept',
     async () => {
       const kept = keptZip('1.0', 'cli')

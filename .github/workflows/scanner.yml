@@ -1,6 +1,6 @@
-# Checks what the analysis assumes about the scanner against the real one: each CLI the action is
-# tested with, and the engines SonarCloud and SonarQube serve, which change on Sonar's schedule, hence
-# the weekly run, which also reports a newer CLI.
+# Checks what the analysis assumes about the scanner against the real one: the engines SonarCloud and
+# SonarQube serve, and each CLI the action is tested with. Sonar changes the engines on its own
+# schedule, hence the weekly run. It also reports a newer CLI.
 name: 'Scanner and engines'
 on:
   push:
@@ -34,7 +34,56 @@ jobs:
       - name: 'Check for a newer scanner CLI'
         run: npm run scanner:check
 
-  scanner:
+  # Once: none of it depends on the CLI. On pull requests too, as it checks the action's code against
+  # what Sonar serves.
+  engines:
+    name: 'Check against the engines'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: 'Checkout project'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 'Set up Node.js'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: 'Set up Java'
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: 'Install dependencies'
+        run: npm ci
+
+      # Keyed by what the engines are today, so a new engine is a new cache entry. The checks verify a
+      # restored engine like a downloaded one.
+      - name: 'Identify the current engines'
+        id: engines
+        run: |
+          cloud="$(curl -sfS https://api.sonarcloud.io/analysis/engine | jq -r .sha256)"
+          latest="$(curl -sfS -o /dev/null -w '%{redirect_url}' https://github.com/SonarSource/sonarqube/releases/latest)"
+          qube="${latest##*/}"
+          [[ "$cloud" =~ ^[0-9a-f]{64}$ && "$qube" =~ ^[0-9.]+$ ]]
+          echo "key=scanner-engines-$cloud-$qube" >> "$GITHUB_OUTPUT"
+
+      - name: 'Restore the engines'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/engines
+          key: ${{ steps.engines.outputs.key }}
+
+      - name: 'Check against the engines'
+        run: npm run test:engines
+        env:
+          SCANNER_ENGINES: ${{ runner.temp }}/engines
+
+  cli:
     name: 'Check against CLI ${{ matrix.version }}'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -64,35 +113,16 @@ jobs:
       - name: 'Install dependencies'
         run: npm ci
 
-      # Keyed by what the engines are today, so a new engine is a new cache entry. The checks verify a
-      # restored engine like a downloaded one; the CLI is never cached, so the action's installer always
-      # checks its signature.
-      - name: 'Identify the current engines'
-        id: engines
-        run: |
-          cloud="$(curl -sfS https://api.sonarcloud.io/analysis/engine | jq -r .sha256)"
-          latest="$(curl -sfS -o /dev/null -w '%{redirect_url}' https://github.com/SonarSource/sonarqube/releases/latest)"
-          qube="${latest##*/}"
-          [[ "$cloud" =~ ^[0-9a-f]{64}$ && "$qube" =~ ^[0-9.]+$ ]]
-          echo "key=scanner-engines-$cloud-$qube" >> "$GITHUB_OUTPUT"
-
-      - name: 'Restore the engines'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ runner.temp }}/engines
-          key: ${{ steps.engines.outputs.key }}
-
-      - name: 'Check against the real scanner'
-        run: npm run test:scanner
+      - name: 'Check against the CLI'
+        run: npm run test:cli
         env:
-          SCANNER_ENGINES: ${{ runner.temp }}/engines
           SCANNER_VERSION: ${{ matrix.version }}
 
   # The branch ruleset requires this name instead of each job's. A new job must join its needs, except
   # one that only runs on a schedule.
   result:
-    name: 'Every CLI check passed'
-    needs: [scanner]
+    name: 'Every scanner check passed'
+    needs: [engines, cli]
     # Even after a failure: a skipped required check counts as passed.
     if: always()
     runs-on: ubuntu-latest

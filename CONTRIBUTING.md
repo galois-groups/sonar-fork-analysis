@@ -20,10 +20,12 @@ Three workflows besides CI check the action:
 - [![CodeQL](https://github.com/galois-groups/sonar-fork-analysis/actions/workflows/codeql.yml/badge.svg)](https://github.com/galois-groups/sonar-fork-analysis/actions/workflows/codeql.yml)
   is GitHub's security analysis of the code and the workflows.
 
-`npm run test:scanner` runs the tests against the real scanner. They download
-the scanner and SonarQube's engines. They need Java and `unzip`. If Sonar ships
-an engine that starts processes in new places, they fail until someone reviews
-`__tests__/java/engine-processes-*.txt`.
+`npm run test:engines` checks what the action assumes against the engines
+SonarCloud and SonarQube serve. `npm run test:cli` does the same against the
+scanner CLI in `SCANNER_VERSION`, else the default. Both download what they
+check from Sonar and need Java. `test:cli` also needs `unzip`. If Sonar ships an
+engine that starts processes in new places, the engine checks fail until someone
+reviews `__tests__/java/engine-processes-*.txt`.
 
 The fixtures' fork-path analyses also record every program the scanner starts.
 If Sonar adds a helper program, the check fails and shows its command line.

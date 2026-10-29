@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import fc from 'fast-check'
 import * as core from '../__fixtures__/core.js'
-import { posixIt } from '../__fixtures__/platform.js'
+import { windows } from '../__fixtures__/platform.js'
 
 vi.doMock('@actions/core', () => core)
 
@@ -207,7 +207,7 @@ describe('cleanUpCheckout', () => {
     expect(readdirSync(workspace)).toEqual([])
   })
 
-  posixIt('removes what it can when an entry resists', () => {
+  it.skipIf(windows)('removes what it can when an entry resists', () => {
     core.getState.mockReturnValue('true')
     const locked = join(workspace, 'locked')
     mkdirSync(locked)

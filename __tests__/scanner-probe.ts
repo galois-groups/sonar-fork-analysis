@@ -1,5 +1,6 @@
-// Gets the real scanner, the CLI the action pins and the engines Sonar serves, and asks it questions
-// through ScannerProbe.java, which calls its code directly.
+// Gets the real scanner, a CLI the action is tested with and the engines Sonar serves, and asks it
+// questions through ScannerProbe.java, which calls its code directly.
+import { afterAll } from 'vitest'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
@@ -10,10 +11,27 @@ import {
   rmSync,
   writeFileSync
 } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { delimiter, dirname, join, resolve } from 'node:path'
 import { crc32, inflateRawSync } from 'node:zlib'
 import { installScanner } from '../src/scanner.js'
+
+// Downloads are kept between local runs in the user's own cache, never a shared directory; on CI they
+// go to the job's temporary directory. The installer's own leftovers go to a directory of this run.
+export const work =
+  process.env.RUNNER_TEMP ??
+  join(homedir(), '.cache', 'sonar-fork-analysis', 'scanner-checks')
+process.env.RUNNER_TOOL_CACHE ??= join(work, 'tools')
+// The Scanner workflow caches the engines in a directory of their own.
+export const engines = process.env.SCANNER_ENGINES ?? work
+const runnerTemp = process.env.RUNNER_TEMP
+if (!runnerTemp)
+  process.env.RUNNER_TEMP = mkdtempSync(join(tmpdir(), 'scanner-'))
+
+afterAll(() => {
+  if (!runnerTemp)
+    rmSync(process.env.RUNNER_TEMP as string, { recursive: true, force: true })
+})
 
 // The Scanner workflow checks each tested version in turn, named by SCANNER_VERSION.
 export async function cliJar(): Promise<string> {

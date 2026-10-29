@@ -40,6 +40,10 @@ The workflows list the versions too: add the new one to the matrix in
 `npm run bundle` and open a pull request. Its checks run the real scanner and
 the fixtures with every version in the list.
 
+The weekly run also reports a newer patch of an older tested version, such as
+8.1.1 for 8.1.0. Replace that version by hand in `TESTED_VERSIONS` and in both
+matrices.
+
 To run the action locally, copy `.env.example` to `.env`, edit it and run
 `npm run local`.
 

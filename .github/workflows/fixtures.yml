@@ -82,7 +82,7 @@ jobs:
         working-directory: fixtures/npm
         run: |
           # The fixture needs no install scripts, and none may touch the steps that follow.
-          npm ci --ignore-scripts
+          npm ci --ignore-scripts --no-audit --no-fund
           npm test
 
       - name: 'Test the pnpm fixture'
@@ -169,7 +169,7 @@ jobs:
         working-directory: fixtures/npm
         run: |
           # The fixture needs no install scripts, and none may touch the steps that follow.
-          npm ci --ignore-scripts
+          npm ci --ignore-scripts --no-audit --no-fund
           npm test
 
       - name: 'Test the pnpm fixture'
@@ -253,7 +253,7 @@ jobs:
         if: matrix.fixture == 'npm'
         working-directory: fixtures/npm
         run: |
-          npm ci --ignore-scripts
+          npm ci --ignore-scripts --no-audit --no-fund
           npm test
 
       # The runner comes with Maven and Gradle, so the build would pass without the wrapper too. These

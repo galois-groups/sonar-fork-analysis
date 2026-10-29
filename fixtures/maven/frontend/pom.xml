@@ -41,7 +41,7 @@
                             <goal>npm</goal>
                         </goals>
                         <configuration>
-                            <arguments>ci --ignore-scripts</arguments>
+                            <arguments>ci --ignore-scripts --no-audit --no-fund</arguments>
                         </configuration>
                     </execution>
                     <execution>

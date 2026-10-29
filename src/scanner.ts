@@ -23,8 +23,13 @@ import {
 } from './signature.js'
 
 // The version that runs unless the workflow names another, and every version the checks run against.
-export const DEFAULT_VERSION = '8.2.0.6438'
-export const TESTED_VERSIONS = ['8.0.1.6346', '8.1.0.6389', DEFAULT_VERSION]
+export const DEFAULT_VERSION = '8.3.0.16463'
+export const TESTED_VERSIONS = [
+  '8.0.1.6346',
+  '8.1.0.6389',
+  '8.2.0.6438',
+  DEFAULT_VERSION
+]
 
 const DOWNLOADS =
   'https://binaries.sonarsource.com/Distribution/sonar-scanner-cli'

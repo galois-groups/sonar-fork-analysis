@@ -337,7 +337,7 @@ jobs:
       max-parallel: 1
       matrix:
         # TESTED_VERSIONS in src/scanner.ts without the default, which the fork path above runs.
-        version: ['8.0.1.6346', '8.1.0.6389']
+        version: ['8.0.1.6346', '8.1.0.6389', '8.2.0.6438']
     uses: $/.github/workflows/fork-path.yml
     with:
       mode: analyze

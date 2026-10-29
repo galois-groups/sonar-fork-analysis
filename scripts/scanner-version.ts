@@ -1,6 +1,6 @@
-// Fails when Sonar has released a newer scanner CLI than the action's default, which nothing else
-// would notice. With --update, checks the new release's signature and makes it the default, keeping
-// the old default among the tested versions.
+// Fails when Sonar has released a newer scanner CLI than the action's default, or a newer patch of
+// another tested version, which nothing else would notice. With --update, checks the newest release's
+// signature and makes it the default, keeping the old default among the tested versions.
 //
 // Usage: node scripts/scanner-version.ts [--update]
 
@@ -16,17 +16,31 @@ async function fetched(url: string): Promise<Response> {
   return response
 }
 
-async function latestRelease(): Promise<string> {
+// Every release on Maven Central. Not its <release>, the version published last, which can be a patch
+// of an old line: 5.0.2 came out after 7.1.0.
+async function releases(): Promise<string[]> {
   const metadata = await (
     await fetched(
       'https://repo1.maven.org/maven2/org/sonarsource/scanner/cli/sonar-scanner-cli/maven-metadata.xml'
     )
   ).text()
   // Download names need all four parts.
-  const latest = /<release>(\d+\.\d+\.\d+\.\d+)<\/release>/.exec(metadata)?.[1]
-  if (!latest) throw new Error('No scanner CLI release found on Maven Central')
-  return latest
+  const versions = [
+    ...metadata.matchAll(/<version>(\d+\.\d+\.\d+\.\d+)<\/version>/g)
+  ].map(([, version]) => version as string)
+  if (versions.length === 0)
+    throw new Error('No scanner CLI release found on Maven Central')
+  return versions
 }
+
+// Compares the numbers in a version as numbers: 8.10 comes after 8.9. Below zero when a is older.
+const { compare } = new Intl.Collator('en', { numeric: true })
+
+const newest = (start: string, versions: string[]): string =>
+  versions.reduce((a, b) => (compare(a, b) >= 0 ? a : b), start)
+
+const sameLine = (a: string, b: string): boolean =>
+  a.split('.').slice(0, 2).join('.') === b.split('.').slice(0, 2).join('.')
 
 const source = readFileSync(SOURCE, 'utf8')
 const pinned = /^export const DEFAULT_VERSION = '([0-9.]+)'$/m.exec(source)?.[1]
@@ -37,18 +51,35 @@ const TESTED =
 if (!TESTED.test(source))
   throw new Error(`No TESTED_VERSIONS ending in DEFAULT_VERSION in ${SOURCE}`)
 
-const latest = await latestRelease()
+const all = await releases()
+const latest = newest(pinned, all)
 if (!process.argv.includes('--update')) {
-  if (latest !== pinned) {
-    console.error(
+  const found: string[] = []
+  if (compare(latest, pinned) > 0)
+    found.push(
       `sonar-scanner-cli ${latest} is out, the action defaults to ${pinned}: run npm run scanner:update`
     )
-    process.exit(1)
+  const others = [
+    ...(TESTED.exec(source)?.[1] ?? '').matchAll(/'(\d+\.\d+\.\d+\.\d+)'/g)
+  ].map(([, version]) => version as string)
+  for (const version of others) {
+    const patch = newest(
+      version,
+      all.filter((each) => sameLine(each, version))
+    )
+    if (compare(patch, version) > 0)
+      found.push(
+        `sonar-scanner-cli ${patch} is out, a newer patch of the tested ${version}: replace it in TESTED_VERSIONS and the matrices`
+      )
   }
-  console.log(`sonar-scanner-cli ${pinned} is the latest release`)
+  for (const line of found) console.error(line)
+  if (found.length > 0) process.exit(1)
+  console.log(
+    `sonar-scanner-cli ${pinned} is the latest release, and no tested version has a newer patch`
+  )
   process.exit(0)
 }
-if (latest === pinned) {
+if (compare(latest, pinned) <= 0) {
   console.log(`sonar-scanner-cli ${pinned} is already the default`)
   process.exit(0)
 }

@@ -16,7 +16,7 @@ runs:
       uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
       with:
         distribution: temurin
-        java-version: 21
+        java-version-file: .java-version
         cache: ${{ inputs.fixture }}
 
     # The pnpm the fixture's packageManager names. Before Node, whose cache looks for it.

@@ -1,7 +1,8 @@
 version: 2
 updates:
   - package-ecosystem: 'github-actions'
-    directory: '/'
+    # The workflows, and the local actions that use others.
+    directories: ['/', '/.github/actions/*']
     # Version updates in a weekly batch, majors on their own; security updates don't wait for either.
     schedule:
       interval: 'weekly'

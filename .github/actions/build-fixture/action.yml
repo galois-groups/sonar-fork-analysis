@@ -1,0 +1,54 @@
+name: 'Build a fixture'
+description:
+  'Sets up what a fixture needs and runs its tests, as a workflow does before
+  the action.'
+inputs:
+  fixture:
+    description: 'The fixture: maven, gradle, npm, pnpm or infra.'
+    required: true
+runs:
+  using: composite
+  # It restores the setup actions' caches, so never in a job that analyses pull request code with the
+  # token.
+  steps:
+    - name: 'Set up Java'
+      if: inputs.fixture == 'maven' || inputs.fixture == 'gradle'
+      uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+      with:
+        distribution: temurin
+        java-version: 21
+        cache: ${{ inputs.fixture }}
+
+    # The pnpm the fixture's packageManager names. Before Node, whose cache looks for it.
+    - name: 'Set up pnpm'
+      if: inputs.fixture == 'pnpm'
+      uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      with:
+        package_json_file: fixtures/pnpm/package.json
+
+    - name: 'Set up Node'
+      if: inputs.fixture == 'npm' || inputs.fixture == 'pnpm'
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version-file: .node-version
+        cache: ${{ inputs.fixture }}
+        cache-dependency-path:
+          fixtures/${{ inputs.fixture }}/${{ case(inputs.fixture == 'pnpm',
+          'pnpm-lock.yaml', 'package-lock.json') }}
+
+    - name: 'Test the npm fixture'
+      if: inputs.fixture == 'npm'
+      shell: bash
+      working-directory: fixtures/npm
+      run: |
+        # The fixture needs no install scripts, and none may touch the steps that follow.
+        npm ci --ignore-scripts --no-audit --no-fund
+        npm test
+
+    - name: 'Test the pnpm fixture'
+      if: inputs.fixture == 'pnpm'
+      shell: bash
+      working-directory: fixtures/pnpm
+      run: |
+        pnpm install --frozen-lockfile
+        pnpm -r test

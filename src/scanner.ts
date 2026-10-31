@@ -21,6 +21,7 @@ import {
   message,
   readSigningKey
 } from './signature.js'
+import { warn } from './warnings.js'
 
 // The version that runs unless the workflow names another, and every version the checks run against.
 export const DEFAULT_VERSION = '8.2.0.6438'
@@ -191,7 +192,7 @@ export async function installScanner(
   arch: string = process.arch
 ): Promise<string> {
   if (!TESTED_VERSIONS.includes(version))
-    core.warning(
+    warn(
       `sonar-scanner-cli ${version} isn't one this action is tested with (${TESTED_VERSIONS.join(', ')}). Its signature is checked, but not how it reads the analysis settings or what it starts.`
     )
   const suffix = scannerSuffix(platform, arch)

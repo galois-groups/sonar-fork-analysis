@@ -17928,6 +17928,18 @@ var RUNNER_FILES = /* @__PURE__ */ new Set([
 function toolEnvironment() {
 	return Object.fromEntries(Object.entries(jobEnvironment()).filter(([name]) => !name.startsWith("ACTIONS_") && !RUNNER_FILES.has(name)));
 }
+// src/warnings.ts
+var count = 0;
+function warn(message) {
+	count++;
+	warning(message);
+}
+function warningCount() {
+	return count;
+}
+function resetWarnings() {
+	count = 0;
+}
 // src/checkout.ts
 var QUIET_GIT = {
 	GIT_TERMINAL_PROMPT: "0",
@@ -18036,7 +18048,7 @@ function cleanUpCheckout() {
 	}
 }
 function cleanUpFailed(error) {
-	warning(`Could not clean up the workspace: ${error instanceof Error ? error.message : String(error)}`);
+	warn(`Could not clean up the workspace: ${error instanceof Error ? error.message : String(error)}`);
 }
 function repositoryLocation(url) {
 	let rest = url.trim().toLowerCase();
@@ -18122,14 +18134,14 @@ function statusReporter(target) {
 				})
 			});
 		} catch (error) {
-			warning(`Could not post the ${target.name} status: ${error instanceof Error ? error.message : String(error)}`);
+			warn(`Could not post the ${target.name} status: ${error instanceof Error ? error.message : String(error)}`);
 			return false;
 		}
 		const limited = response.headers.has("retry-after") || response.headers.get("x-ratelimit-remaining") === "0";
 		if ((response.status === 401 || response.status === 403) && !limited) {
 			enabled = false;
 			info(`Not posting the ${target.name} status: the token lacks statuses: write`);
-		} else if (!response.ok) warning(`Could not post the ${target.name} status: GitHub answered ${response.status}`);
+		} else if (!response.ok) warn(`Could not post the ${target.name} status: GitHub answered ${response.status}`);
 		return response.ok;
 	};
 }
@@ -18181,7 +18193,7 @@ async function reportInterrupted() {
 	if (!saved || !target) return;
 	const note = readNote(saved);
 	if (!note) {
-		warning("Not posting the final status: its note is damaged");
+		warn("Not posting the final status: its note is damaged");
 		return;
 	}
 	await statusReporter(target)(note.state, note.description);
@@ -18194,6 +18206,6 @@ function readNote(saved) {
 		return;
 	}
 }
-export { require_undici as A, exec as C, BearerCredentialHandler as D, which as E, __require as F, __toCommonJS as I, __toESM as L, __commonJSMin as M, __esmMin as N, HttpClient as O, __exportAll as P, warning as S, rmRF as T, info as _, cleanUpCheckout as a, setFailed as b, jobEnvironment as c, realPath as d, retry as f, getMultilineInput as g, getInput as h, trackedReporter as i, require_tunnel as j, HttpCodes as k, toolEnvironment as l, error as m, reportInterrupted as n, prepareCheckout as o, debug as p, runStatusTarget as r, verifyCheckout as s, noReporter as t, realLocation as u, isDebug as v, mkdirP as w, setSecret as x, notice as y };
+export { BearerCredentialHandler as A, __toESM as B, setFailed as C, mkdirP as D, exec as E, __commonJSMin as F, __esmMin as I, __exportAll as L, HttpCodes as M, require_undici as N, rmRF as O, require_tunnel as P, __require as R, notice as S, warning as T, error as _, cleanUpCheckout as a, info as b, resetWarnings as c, jobEnvironment as d, toolEnvironment as f, debug as g, retry as h, trackedReporter as i, HttpClient as j, which as k, warn as l, realPath as m, reportInterrupted as n, prepareCheckout as o, realLocation as p, runStatusTarget as r, verifyCheckout as s, noReporter as t, warningCount as u, getInput as v, setSecret as w, isDebug as x, getMultilineInput as y, __toCommonJS as z };
 
 //# sourceMappingURL=shared.js.map

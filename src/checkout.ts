@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 import { toolEnvironment } from './environment.js'
 import { realPath } from './real-path.js'
 import { retry } from './retry.js'
+import { warn } from './warnings.js'
 
 // Never wait for a password, and never let the checkout's attributes send git-lfs to a server.
 const QUIET_GIT = { GIT_TERMINAL_PROMPT: '0', GIT_LFS_SKIP_SMUDGE: '1' }
@@ -160,7 +161,7 @@ export function cleanUpCheckout(): void {
 }
 
 function cleanUpFailed(error: unknown): void {
-  core.warning(
+  warn(
     `Could not clean up the workspace: ${error instanceof Error ? error.message : String(error)}`
   )
 }

@@ -38,8 +38,8 @@ Coming from v1? It no longer gets fixes, not even security fixes. See
 
 ## Documentation
 
-- [Configuration](docs/configuration.md): inputs, required checks, recipes and
-  limitations.
+- [Configuration](docs/configuration.md): inputs, required checks, the job
+  summary, recipes and limitations.
 - [Security](docs/security.md): what stays off, what a fork can still influence
   and how to harden your setup.
 - [How it works](docs/how-it-works.md): what the Sonar workflow does with the

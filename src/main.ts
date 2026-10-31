@@ -76,6 +76,16 @@ import {
   type Reporter
 } from './status.js'
 import { filterSettings, moduleTree } from './settings.js'
+import {
+  analyzeSummary,
+  directSummary,
+  prepareSummary,
+  readReport,
+  reason,
+  skippedSummary,
+  writeSummary
+} from './summary.js'
+import { resetWarnings, warn, warningCount } from './warnings.js'
 
 async function direct(inputs: Inputs): Promise<void> {
   if (!inputs.projectKey) throw new Error('Input required: project-key')
@@ -107,9 +117,18 @@ async function direct(inputs: Inputs): Promise<void> {
   if (exitCode !== 0) throw new Error(buildFailure(tool, exitCode, errorOutput))
   // Sanity check against misconfiguration, e.g. Gradle running another task matching 'sonar'. Not a
   // guarantee: the build can write any report it likes.
-  if (!findNewReport(workingDirectory, reportsBefore))
-    throw new Error(missingAnalysis(tool))
+  const report = findNewReport(workingDirectory, reportsBefore)
+  if (!report) throw new Error(missingAnalysis(tool))
   await leaveDirectNote(inputs.projectKey)
+  writeSummary(() =>
+    directSummary({
+      projectKey: inputs.projectKey,
+      tool: tool.name,
+      scannerVersion: inputs.scannerVersion,
+      report: readReport(readFileSync(report, 'utf8')),
+      warnings: warningCount()
+    })
+  )
 }
 
 const NOTE_DAYS = 35
@@ -143,7 +162,7 @@ async function leaveDirectNote(projectKey: string): Promise<void> {
     const clash = /\(409\)/.test(message)
       ? '; analyses in one workflow need distinct project keys'
       : ''
-    core.warning(
+    warn(
       `Could not note the direct analysis for the fork path: ${message}${clash}`
     )
   }
@@ -165,17 +184,19 @@ async function prepare(inputs: Inputs): Promise<void> {
   // Maven repeats command-line and parent settings in every module.
   const tree = moduleTree(settings)
   const left = new Set(dropped.map((key) => tree.split(key).bareKey))
-  if (left.size > 0)
-    core.warning(
+  if (left.size > 0) {
+    warn(
       `The analysis of pull requests leaves out these settings: ${[...left].join(', ')}. Pass them to the analysis job's build-arguments if it needs them.`
     )
+  }
 
   // The analysis takes the organization only from its own input, so one set only in the build would
   // send the fork path's analysis to no organization at all.
-  if (settings.get('sonar.organization') && !inputs.organization)
-    core.warning(
+  if (settings.get('sonar.organization') && !inputs.organization) {
+    warn(
       `The build sets sonar.organization, which the analysis of pull requests takes only from the sonar-organization input: set it in both workflows.`
     )
+  }
 
   const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd()
   const types = nodeTypes(tool, workingDirectory, workspace)
@@ -192,15 +213,15 @@ async function prepare(inputs: Inputs): Promise<void> {
     types.files,
     types.links
   )
-  for (const warning of staged.warnings) core.warning(warning)
+  for (const warning of staged.warnings) warn(warning)
 
   if (!process.env.ACTIONS_RUNTIME_TOKEN) {
-    core.warning(
+    warn(
       `Not running in GitHub Actions, so ${name} was not uploaded: ${staging}`
     )
     return
   }
-  await new DefaultArtifactClient().uploadArtifact(
+  const upload = await new DefaultArtifactClient().uploadArtifact(
     name,
     staged.files,
     staging,
@@ -209,6 +230,17 @@ async function prepare(inputs: Inputs): Promise<void> {
     }
   )
   core.info(`Uploaded ${name} with ${staged.files.length} files`)
+  writeSummary(() =>
+    prepareSummary({
+      artifact: name,
+      pullRequest: pullRequestNumber() !== undefined,
+      settings: Object.keys(staged.settings).length,
+      leftOut: [...left],
+      files: staged.files.length,
+      bytes: upload.size,
+      warnings: warningCount()
+    })
+  )
 }
 
 // Runs the build's Sonar tool in simulation mode, without the token, and reads the settings it wrote.
@@ -326,7 +358,7 @@ function warnWithoutSettings(
     !existsSync(join(directory, 'sonar-project.properties')) &&
     !buildArguments.some((arg) => arg.startsWith('-Dsonar.sources='))
   )
-    core.warning(
+    warn(
       `No sonar-project.properties in ${directory}, so the scanner analyses the whole directory: add one with sonar.sources or point working-directory at the project`
     )
 }
@@ -365,7 +397,7 @@ async function listArtifacts(
   if (!process.env.ACTIONS_RUNTIME_TOKEN) {
     const local = process.env.SONAR_FORK_ANALYSIS_ARTIFACT
     if (!local) return { ids: new Map(), options: {} }
-    core.warning(`Not running in GitHub Actions, analysing ${local}`)
+    warn(`Not running in GitHub Actions, analysing ${local}`)
     return { local }
   }
   const [owner = '', repo = ''] = context.repository.split('/')
@@ -429,7 +461,8 @@ async function analyzeRun(
   if (!inputs.projectKey) throw new Error('Input required: project-key')
   const origin = await resolveOrigin(context)
   if ('skip' in origin) {
-    core.notice(origin.skip)
+    core.notice(origin.skip.text)
+    writeSummary(() => skippedSummary(origin.skip))
     return
   }
 
@@ -442,17 +475,23 @@ async function analyzeRun(
   } else if (listed.ids.has(name)) {
     found = { id: listed.ids.get(name) as number, options: listed.options }
   } else if (listed.ids.has(directArtifactName(inputs.projectKey))) {
-    core.info('The build analysed directly, so there is nothing to analyse.')
+    const why = reason`The build already analysed this commit directly.`
+    core.info(why.text)
+    writeSummary(() => skippedSummary(why))
     return
   } else if (
     [...listed.ids.keys()].some((n) => n.startsWith(ARTIFACT_PREFIX))
   ) {
     // E.g. a monorepo build that skipped this project because none of its files changed.
-    core.info(`The build prepared other projects, not ${inputs.projectKey}.`)
+    const why = reason`The build prepared other projects, not ${inputs.projectKey}.`
+    core.info(why.text)
+    writeSummary(() => skippedSummary(why))
     return
   } else {
     // Without the artifact the Sonar check never comes; this status says why.
-    core.notice(`No ${name} artifact: the build left nothing to analyse.`)
+    const why = reason`No ${name} artifact: the build left nothing to analyse.`
+    core.notice(why.text)
+    writeSummary(() => skippedSummary(why))
     await report('failure', 'The build left nothing to analyse')
     return
   }
@@ -464,9 +503,9 @@ async function analyzeRun(
   await report('pending', 'Analysing')
   const result = await analyzeCommit(inputs, context, origin, workspace, found)
   if ('gone' in result) {
-    core.notice(
-      `The build's pull request #${String(result.gone)} is closed or has newer commits: nothing to analyse.`
-    )
+    const why = reason`The build's pull request #${result.gone} is closed or has newer commits: nothing to analyse.`
+    core.notice(why.text)
+    writeSummary(() => skippedSummary(why))
     await report(
       'success',
       `Skipped: the build was for #${String(result.gone)}`
@@ -548,8 +587,9 @@ async function analyzeCommit(
   if (existsSync(join(artifact, 'home')))
     cpSync(join(artifact, 'home'), home, { recursive: true })
   if (choiceWarning) warnings.push(choiceWarning)
-  // core.warning escapes its message, unlike core.info, so artifact content cannot inject commands.
-  for (const warning of warnings) core.warning(warning)
+  // warn() escapes its message through core.warning, unlike core.info, so artifact content cannot
+  // inject commands.
+  for (const warning of warnings) warn(warning)
 
   const properties = resolved.properties
   if (!properties.has('sonar.projectBaseDir'))
@@ -568,7 +608,10 @@ async function analyzeCommit(
   const settingsFile = join(temp, 'sonar-project.properties')
   writeFileSync(settingsFile, formatProperties(properties))
 
-  logUntestedLanguages(untestedLanguages(languages), inputs.buildArguments)
+  const { off, turnedOn } = logUntestedLanguages(
+    untestedLanguages(languages),
+    inputs.buildArguments
+  )
   const scanner = await installScanner(inputs.scannerVersion)
   core.info(`Analysing ${name}`)
   const env = toolEnvironment()
@@ -600,13 +643,29 @@ async function analyzeCommit(
   }
   if (exitCode !== 0)
     throw new Error(`The Sonar scanner failed with exit code ${exitCode}`)
+  const reportTask = join(temp, 'scannerwork', 'report-task.txt')
+  writeSummary(() =>
+    analyzeSummary({
+      pullRequest: pullRequest?.key,
+      branch: pullRequest?.branch ?? origin.branch,
+      repository: origin.repository,
+      commit: origin.headSha,
+      scannerVersion: inputs.scannerVersion,
+      untested: off,
+      turnedOn,
+      report: existsSync(reportTask)
+        ? readReport(readFileSync(reportTask, 'utf8'))
+        : undefined,
+      warnings: warningCount()
+    })
+  )
   return { analysed: true }
 }
 
 function logUntestedLanguages(
   languages: string[],
   buildArguments: string[]
-): void {
+): { off: string[]; turnedOn: string[] } {
   const turnedOn = definitions(buildArguments)
     .map(([key]) => key)
     .filter((key) => key.startsWith('sonar.lang.patterns.'))
@@ -621,6 +680,11 @@ function logUntestedLanguages(
     core.info(
       `build-arguments set ${key}: that language's analyzer runs with the token.`
     )
+  // Patterns for a tested language only change its files: it was never off.
+  const untested = [...new Set(turnedOn)].filter((key) =>
+    languages.includes(key.slice('sonar.lang.patterns.'.length))
+  )
+  return { off, turnedOn: untested }
 }
 
 // Whether the run a workflow_run follows built code that no one with write access put here: a pull
@@ -652,7 +716,7 @@ async function dispatch(inputs: Inputs, report: Reporter): Promise<void> {
     inputs.token,
     followsUntrustedRun(eventName)
   )
-  if (resolution.warning) core.warning(resolution.warning)
+  if (resolution.warning) warn(resolution.warning)
   core.info(`Mode: ${resolution.mode}`)
 
   switch (resolution.mode) {
@@ -675,6 +739,7 @@ function workflowRunReporter(): Reporter {
 
 export async function run(): Promise<void> {
   let report: Reporter = noReporter
+  resetWarnings()
   try {
     report = workflowRunReporter()
     const inputs = readInputs()

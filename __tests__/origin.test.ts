@@ -101,7 +101,10 @@ describe('resolveOrigin', () => {
     })
 
     expect(origin).toEqual({
-      skip: 'The run names no branch to find its pull request by.'
+      skip: {
+        text: 'The run names no branch to find its pull request by.',
+        markdown: 'The run names no branch to find its pull request by.'
+      }
     })
     expect(fetch).not.toHaveBeenCalled()
   })

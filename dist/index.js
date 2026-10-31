@@ -1,4 +1,4 @@
-import { A as require_undici, C as exec, D as BearerCredentialHandler, E as which, F as __require, I as __toCommonJS, L as __toESM, M as __commonJSMin, N as __esmMin, O as HttpClient, P as __exportAll, S as warning, T as rmRF, _ as info, b as setFailed, c as jobEnvironment, d as realPath, f as retry$2, g as getMultilineInput, h as getInput, i as trackedReporter, j as require_tunnel, k as HttpCodes, l as toolEnvironment, m as error, o as prepareCheckout, p as debug, r as runStatusTarget, s as verifyCheckout, t as noReporter, u as realLocation, v as isDebug, w as mkdirP, x as setSecret, y as notice } from "./shared.js";
+import { A as BearerCredentialHandler, B as __toESM, C as setFailed, D as mkdirP, E as exec, F as __commonJSMin, I as __esmMin, L as __exportAll, M as HttpCodes, N as require_undici, O as rmRF, P as require_tunnel, R as __require, S as notice, T as warning, _ as error, b as info, c as resetWarnings, d as jobEnvironment, f as toolEnvironment, g as debug, h as retry$2, i as trackedReporter, j as HttpClient, k as which, l as warn, m as realPath, o as prepareCheckout, p as realLocation, r as runStatusTarget, s as verifyCheckout, t as noReporter, u as warningCount, v as getInput, w as setSecret, x as isDebug, y as getMultilineInput, z as __toCommonJS } from "./shared.js";
 import os, { EOL } from "os";
 import * as crypto$3 from "crypto";
 import * as fs$2 from "fs";
@@ -21,7 +21,7 @@ import https from "node:https";
 import * as stream from "stream";
 import { Readable as Readable$1 } from "stream";
 import { Buffer as Buffer$1 } from "buffer";
-import fs, { accessSync, constants as constants$1, copyFileSync, cpSync, existsSync as existsSync$1, globSync, lstatSync, mkdirSync, mkdtempSync, readFileSync as readFileSync$1, readdirSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import fs, { accessSync, appendFileSync, constants as constants$1, copyFileSync, cpSync, existsSync as existsSync$1, globSync, lstatSync, mkdirSync, mkdtempSync, readFileSync as readFileSync$1, readdirSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import fs$1, { realpath } from "fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve as resolve$1, sep } from "node:path";
 import { createRequire } from "module";
@@ -103760,7 +103760,7 @@ async function scannerZip(version, name, fingerprint = SONARSOURCE_KEY) {
 	return downloaded;
 }
 async function installScanner(version = DEFAULT_VERSION, platform = process.platform, arch = process.arch) {
-	if (!TESTED_VERSIONS.includes(version)) warning(`sonar-scanner-cli ${version} isn't one this action is tested with (${TESTED_VERSIONS.join(", ")}). Its signature is checked, but not how it reads the analysis settings or what it starts.`);
+	if (!TESTED_VERSIONS.includes(version)) warn(`sonar-scanner-cli ${version} isn't one this action is tested with (${TESTED_VERSIONS.join(", ")}). Its signature is checked, but not how it reads the analysis settings or what it starts.`);
 	const suffix = scannerSuffix(platform, arch);
 	if (!suffix) info(`No scanner with a bundled Java runtime for ${platform}-${arch}, using the Java on the runner`);
 	return unpackScanner(await scannerZip(version, `sonar-scanner-cli-${version}${suffix}`), version, suffix, platform);
@@ -103832,6 +103832,109 @@ function checkBuild(mode, eventName, token, untrustedRun) {
 		warning: "Direct analysis on workflow_run builds the checked-out code with the Sonar token; make sure it is not code from a fork."
 	};
 }
+// src/summary.ts
+var PLAIN = /^[A-Za-z0-9 ]$/u;
+var BIDI = /^\p{Bidi_Control}$/u;
+function references(text, split) {
+	let out = "";
+	for (const character of text) {
+		const shown = BIDI.test(character) ? "�" : character;
+		if (PLAIN.test(shown)) out += shown;
+		else out += `&#${String(shown.codePointAt(0))};`;
+		if (split && shown === "@") out += "<wbr>";
+	}
+	return out;
+}
+var escaped = (text) => references(text, true);
+var code = (text) => `<code>${escaped(text)}</code>`;
+var list = (items) => items.map(code).join(", ");
+var count = (value) => value.toLocaleString("en-GB");
+function size(bytes) {
+	const kilobytes = Math.ceil(bytes / 1024);
+	return kilobytes < 1024 ? `${count(kilobytes)} KB` : `${count(Math.ceil(bytes / 1048576))} MB`;
+}
+function link(report) {
+	if (!report?.dashboardUrl || !report.serverUrl) return "";
+	let page;
+	try {
+		page = new URL(report.dashboardUrl);
+		if (page.origin !== new URL(report.serverUrl).origin) return "";
+	} catch {
+		return "";
+	}
+	if (page.protocol !== "https:" && page.protocol !== "http:") return "";
+	if (page.username || page.password) return "";
+	return ` <a href="${references(page.href, false)}">See the analysis</a>`;
+}
+function warned(warnings) {
+	if (warnings === 0) return "";
+	if (warnings === 1) return "\n\n1 warning: see the annotations.";
+	if (warnings <= 10) return `\n\n${count(warnings)} warnings: see the annotations.`;
+	return `\n\n${count(warnings)} warnings: see the log. GitHub shows at most 10 of them as annotations.`;
+}
+function readReport(text) {
+	const report = {};
+	for (const line of text.split(/\r?\n/)) {
+		const at = line.indexOf("=");
+		if (at < 0) continue;
+		const key = line.slice(0, at);
+		const value = line.slice(at + 1);
+		if (key === "dashboardUrl") report.dashboardUrl = value;
+		if (key === "serverUrl") report.serverUrl = value;
+	}
+	return report;
+}
+var TOOLS = {
+	maven: "the Maven build",
+	gradle: "the Gradle build",
+	npm: "the npm scanner"
+};
+function directSummary(facts) {
+	const build = facts.tool === "scanner" ? `the scanner CLI ${escaped(facts.scannerVersion)}` : TOOLS[facts.tool] ?? escaped(facts.tool);
+	return `### ✅ Sonar analysis\n\nAnalysed ${code(facts.projectKey)} directly with ${build}.${link(facts.report)}${warned(facts.warnings)}`;
+}
+function prepareSummary(facts) {
+	const rows = [["Artifact", code(facts.artifact)], ["Settings carried over", count(facts.settings)]];
+	if (facts.leftOut.length > 0) rows.push(["Settings left out", list(facts.leftOut)]);
+	rows.push(["Files shipped", count(facts.files)]);
+	if (facts.bytes !== void 0) rows.push(["Size", size(facts.bytes)]);
+	const table = rows.map(([name, value]) => `| ${name} | ${value} |`).join("\n");
+	return `### 📦 Sonar analysis prepared\n\nThe Sonar workflow analyses ${facts.pullRequest ? "this pull request" : "this build"} when this run finishes, using what this build ships:\n\n| | |\n|---|---|\n${table}${warned(facts.warnings)}`;
+}
+function analyzeSummary(facts) {
+	let what = "";
+	if (facts.pullRequest) what = ` of pull request #${escaped(facts.pullRequest)}`;
+	else if (facts.branch) what = ` of branch ${code(facts.branch)}`;
+	const onBranch = facts.pullRequest && facts.branch ? ` on branch ${code(facts.branch)}` : "";
+	const untested = facts.untested.length > 0 ? `\n\nLanguages this action isn't tested with stay off: ${list(facts.untested)}.` : "";
+	const on = facts.turnedOn.length > 0 ? `\n\nTurned on by build-arguments: ${list(facts.turnedOn)}.` : "";
+	return `### ✅ Sonar analysis${what}\n\nAnalysed commit ${code(facts.commit.slice(0, 7))}${onBranch} of ${code(facts.repository)} with the scanner CLI ${escaped(facts.scannerVersion)}.${link(facts.report)}\n\nTurned off: dependency analysis and build-system autoconfiguration.${untested}${on}${warned(facts.warnings)}`;
+}
+function reason(words, ...values) {
+	let text = words[0] ?? "";
+	let markdown = text;
+	values.forEach((value, at) => {
+		const next = words[at + 1] ?? "";
+		text += `${String(value)}${next}`;
+		markdown += `${typeof value === "number" ? escaped(String(value)) : code(value)}${next}`;
+	});
+	return {
+		text,
+		markdown
+	};
+}
+function skippedSummary(why) {
+	return `### ⏭️ No Sonar analysis\n\n${why.markdown}`;
+}
+function writeSummary(build) {
+	const path = process.env.GITHUB_STEP_SUMMARY;
+	if (!path) return;
+	try {
+		appendFileSync(path, `${build()}\n`);
+	} catch (error) {
+		warn(`Could not write the job summary: ${error instanceof Error ? error.message : String(error)}`);
+	}
+}
 // src/origin.ts
 async function findPullRequests(context, owner, branch, sha) {
 	const query = new URLSearchParams({
@@ -103887,11 +103990,11 @@ async function resolveOrigin(context) {
 			headSha: run.head_sha
 		};
 		if (run.event === "pull_request") {
-			if (!run.head_branch) return { skip: "The run names no branch to find its pull request by." };
+			if (!run.head_branch) return { skip: reason`The run names no branch to find its pull request by.` };
 			const [owner = ""] = run.head_repository.full_name.split("/");
 			origin.pullRequests = await findPullRequests(context, owner, run.head_branch, run.head_sha);
-			if (origin.pullRequests.length === 0) return { skip: `No open pull request has ${run.head_sha} as its head any more; a newer run analyses it.` };
-		} else if (run.head_repository.full_name.toLowerCase() !== context.repository.toLowerCase()) return { skip: `The run comes from a branch of ${run.head_repository.full_name} rather than a pull request: nothing to analyse.` };
+			if (origin.pullRequests.length === 0) return { skip: reason`No open pull request has ${run.head_sha} as its head any more; a newer run analyses it.` };
+		} else if (run.head_repository.full_name.toLowerCase() !== context.repository.toLowerCase()) return { skip: reason`The run comes from a branch of ${run.head_repository.full_name} rather than a pull request: nothing to analyse.` };
 		else if (run.head_branch && run.head_branch !== event.repository.default_branch) origin.branch = run.head_branch;
 		return origin;
 	}
@@ -104031,8 +104134,16 @@ async function direct(inputs) {
 		listeners: { stderr: (data) => errorOutput += data.toString() }
 	});
 	if (exitCode !== 0) throw new Error(buildFailure(tool, exitCode, errorOutput));
-	if (!findNewReport(workingDirectory, reportsBefore)) throw new Error(missingAnalysis(tool));
+	const report = findNewReport(workingDirectory, reportsBefore);
+	if (!report) throw new Error(missingAnalysis(tool));
 	await leaveDirectNote(inputs.projectKey);
+	writeSummary(() => directSummary({
+		projectKey: inputs.projectKey,
+		tool: tool.name,
+		scannerVersion: inputs.scannerVersion,
+		report: readReport(readFileSync$1(report, "utf8")),
+		warnings: warningCount()
+	}));
 }
 var NOTE_DAYS = 35;
 async function leaveDirectNote(projectKey) {
@@ -104048,7 +104159,7 @@ async function leaveDirectNote(projectKey) {
 		if (error instanceof GHESNotSupportedError) return;
 		const message = error instanceof Error ? error.message : String(error);
 		const clash = /\(409\)/.test(message) ? "; analyses in one workflow need distinct project keys" : "";
-		warning(`Could not note the direct analysis for the fork path: ${message}${clash}`);
+		warn(`Could not note the direct analysis for the fork path: ${message}${clash}`);
 	}
 }
 async function prepare(inputs) {
@@ -104064,8 +104175,8 @@ async function prepare(inputs) {
 	info(`Ignored ${ignored.length} environment variables and JVM properties`);
 	const tree = moduleTree(settings);
 	const left = new Set(dropped.map((key) => tree.split(key).bareKey));
-	if (left.size > 0) warning(`The analysis of pull requests leaves out these settings: ${[...left].join(", ")}. Pass them to the analysis job's build-arguments if it needs them.`);
-	if (settings.get("sonar.organization") && !inputs.organization) warning(`The build sets sonar.organization, which the analysis of pull requests takes only from the sonar-organization input: set it in both workflows.`);
+	if (left.size > 0) warn(`The analysis of pull requests leaves out these settings: ${[...left].join(", ")}. Pass them to the analysis job's build-arguments if it needs them.`);
+	if (settings.get("sonar.organization") && !inputs.organization) warn(`The build sets sonar.organization, which the analysis of pull requests takes only from the sonar-organization input: set it in both workflows.`);
 	const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
 	const types = nodeTypes(tool, workingDirectory, workspace);
 	const staging = join(temp, "artifact");
@@ -104073,13 +104184,22 @@ async function prepare(inputs) {
 		workspace,
 		home: homedir()
 	}, staging, tool.name, pullRequestNumber(), types.files, types.links);
-	for (const warning$1 of staged.warnings) warning(warning$1);
+	for (const warning of staged.warnings) warn(warning);
 	if (!process.env.ACTIONS_RUNTIME_TOKEN) {
-		warning(`Not running in GitHub Actions, so ${name} was not uploaded: ${staging}`);
+		warn(`Not running in GitHub Actions, so ${name} was not uploaded: ${staging}`);
 		return;
 	}
-	await new DefaultArtifactClient().uploadArtifact(name, staged.files, staging, { retentionDays: 1 });
+	const upload = await new DefaultArtifactClient().uploadArtifact(name, staged.files, staging, { retentionDays: 1 });
 	info(`Uploaded ${name} with ${staged.files.length} files`);
+	writeSummary(() => prepareSummary({
+		artifact: name,
+		pullRequest: pullRequestNumber() !== void 0,
+		settings: Object.keys(staged.settings).length,
+		leftOut: [...left],
+		files: staged.files.length,
+		bytes: upload.size,
+		warnings: warningCount()
+	}));
 }
 async function simulate(tool, workingDirectory, temp, inputs) {
 	const npm = tool.name === "npm";
@@ -104130,7 +104250,7 @@ function pullRequestNumber() {
 	return JSON.parse(readFileSync$1(eventPath, "utf8")).pull_request.number;
 }
 function warnWithoutSettings(tool, directory, buildArguments) {
-	if (tool.name === "scanner" && !existsSync$1(join(directory, "sonar-project.properties")) && !buildArguments.some((arg) => arg.startsWith("-Dsonar.sources="))) warning(`No sonar-project.properties in ${directory}, so the scanner analyses the whole directory: add one with sonar.sources or point working-directory at the project`);
+	if (tool.name === "scanner" && !existsSync$1(join(directory, "sonar-project.properties")) && !buildArguments.some((arg) => arg.startsWith("-Dsonar.sources="))) warn(`No sonar-project.properties in ${directory}, so the scanner analyses the whole directory: add one with sonar.sources or point working-directory at the project`);
 }
 async function executable(tool, version) {
 	return tool.name === "scanner" ? installScanner(version) : tool.executable;
@@ -104145,7 +104265,7 @@ async function listArtifacts(origin, context) {
 			ids: /* @__PURE__ */ new Map(),
 			options: {}
 		};
-		warning(`Not running in GitHub Actions, analysing ${local}`);
+		warn(`Not running in GitHub Actions, analysing ${local}`);
 		return { local };
 	}
 	const [owner = "", repo = ""] = context.repository.split("/");
@@ -104190,7 +104310,8 @@ async function analyzeRun(inputs, context, workspace, report) {
 	if (!inputs.projectKey) throw new Error("Input required: project-key");
 	const origin = await resolveOrigin(context);
 	if ("skip" in origin) {
-		notice(origin.skip);
+		notice(origin.skip.text);
+		writeSummary(() => skippedSummary(origin.skip));
 		return;
 	}
 	const name = artifactName(inputs.projectKey);
@@ -104202,13 +104323,19 @@ async function analyzeRun(inputs, context, workspace, report) {
 		options: listed.options
 	};
 	else if (listed.ids.has(directArtifactName(inputs.projectKey))) {
-		info("The build analysed directly, so there is nothing to analyse.");
+		const why = reason`The build already analysed this commit directly.`;
+		info(why.text);
+		writeSummary(() => skippedSummary(why));
 		return;
 	} else if ([...listed.ids.keys()].some((n) => n.startsWith("sonar-fork-analysis-"))) {
-		info(`The build prepared other projects, not ${inputs.projectKey}.`);
+		const why = reason`The build prepared other projects, not ${inputs.projectKey}.`;
+		info(why.text);
+		writeSummary(() => skippedSummary(why));
 		return;
 	} else {
-		notice(`No ${name} artifact: the build left nothing to analyse.`);
+		const why = reason`No ${name} artifact: the build left nothing to analyse.`;
+		notice(why.text);
+		writeSummary(() => skippedSummary(why));
 		await report("failure", "The build left nothing to analyse");
 		return;
 	}
@@ -104216,7 +104343,9 @@ async function analyzeRun(inputs, context, workspace, report) {
 	await report("pending", "Analysing");
 	const result = await analyzeCommit(inputs, context, origin, workspace, found);
 	if ("gone" in result) {
-		notice(`The build's pull request #${String(result.gone)} is closed or has newer commits: nothing to analyse.`);
+		const why = reason`The build's pull request #${result.gone} is closed or has newer commits: nothing to analyse.`;
+		notice(why.text);
+		writeSummary(() => skippedSummary(why));
 		await report("success", `Skipped: the build was for #${String(result.gone)}`);
 		return;
 	}
@@ -104264,7 +104393,7 @@ async function analyzeCommit(inputs, context, origin, workspace, found) {
 	];
 	if (existsSync$1(join(artifact, "home"))) cpSync(join(artifact, "home"), home, { recursive: true });
 	if (choiceWarning) warnings.push(choiceWarning);
-	for (const warning$2 of warnings) warning(warning$2);
+	for (const warning of warnings) warn(warning);
 	const properties = resolved.properties;
 	if (!properties.has("sonar.projectBaseDir")) properties.set("sonar.projectBaseDir", workspace);
 	const languages = await serverLanguages(languagesHost(inputs.hostUrl, inputs.buildArguments), inputs.token);
@@ -104276,7 +104405,7 @@ async function analyzeCommit(inputs, context, origin, workspace, found) {
 	for (const [key, value] of trusted) properties.set(key, value);
 	const settingsFile = join(temp, "sonar-project.properties");
 	writeFileSync(settingsFile, formatProperties(properties));
-	logUntestedLanguages(untestedLanguages(languages), inputs.buildArguments);
+	const { off, turnedOn } = logUntestedLanguages(untestedLanguages(languages), inputs.buildArguments);
 	const scanner = await installScanner(inputs.scannerVersion);
 	info(`Analysing ${name}`);
 	const env = toolEnvironment();
@@ -104297,6 +104426,18 @@ async function analyzeCommit(inputs, context, origin, workspace, found) {
 		info(`::${resume}::`);
 	}
 	if (exitCode !== 0) throw new Error(`The Sonar scanner failed with exit code ${exitCode}`);
+	const reportTask = join(temp, "scannerwork", "report-task.txt");
+	writeSummary(() => analyzeSummary({
+		pullRequest: pullRequest?.key,
+		branch: pullRequest?.branch ?? origin.branch,
+		repository: origin.repository,
+		commit: origin.headSha,
+		scannerVersion: inputs.scannerVersion,
+		untested: off,
+		turnedOn,
+		report: existsSync$1(reportTask) ? readReport(readFileSync$1(reportTask, "utf8")) : void 0,
+		warnings: warningCount()
+	}));
 	return { analysed: true };
 }
 function logUntestedLanguages(languages, buildArguments) {
@@ -104304,6 +104445,10 @@ function logUntestedLanguages(languages, buildArguments) {
 	const off = languages.filter((language) => !turnedOn.includes(`sonar.lang.patterns.${language}`));
 	if (off.length > 0) info(`The analyzers of languages this action isn't tested with stay off: ${off.join(", ")}. To turn one on, set sonar.lang.patterns.<language> in build-arguments.`);
 	for (const key of new Set(turnedOn)) info(`build-arguments set ${key}: that language's analyzer runs with the token.`);
+	return {
+		off,
+		turnedOn: [...new Set(turnedOn)].filter((key) => languages.includes(key.slice(20)))
+	};
 }
 function followsUntrustedRun(eventName) {
 	const eventPath = process.env.GITHUB_EVENT_PATH;
@@ -104314,7 +104459,7 @@ function followsUntrustedRun(eventName) {
 async function dispatch(inputs, report) {
 	const eventName = process.env.GITHUB_EVENT_NAME ?? "";
 	const resolution = resolveMode(inputs.mode, eventName, inputs.token, followsUntrustedRun(eventName));
-	if (resolution.warning) warning(resolution.warning);
+	if (resolution.warning) warn(resolution.warning);
 	info(`Mode: ${resolution.mode}`);
 	switch (resolution.mode) {
 		case "direct": return direct(inputs);
@@ -104328,6 +104473,7 @@ function workflowRunReporter() {
 }
 async function run() {
 	let report = noReporter;
+	resetWarnings();
 	try {
 		report = workflowRunReporter();
 		const inputs = readInputs();

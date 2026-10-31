@@ -1,7 +1,8 @@
 # Configuration
 
 Everything beyond the [setup](../README.md#setup): the inputs, build tools,
-required checks, recipes for common setups, supported runners and limitations.
+required checks, the job summary, recipes for common setups, supported runners
+and limitations.
 
 ## Inputs
 
@@ -98,6 +99,25 @@ posted as a failure when the Sonar workflow finds nothing to analyse, for
 example after a push the build didn't analyse. Don't require it: pull requests
 from your own repository normally don't get it, so requiring it would block
 them.
+
+## The job summary
+
+Each run that doesn't fail also writes a short summary on the run's summary
+page:
+
+- A direct analysis shows the project, the build and a link to the analysis.
+- The build of a pull request from a fork lists what it ships to the Sonar
+  workflow: the artifact, how many settings it carries, any settings it leaves
+  out, the number of files and the size of the artifact.
+- The Sonar workflow shows the pull request, the commit and the fork it
+  analysed, a link to the analysis and what stays off.
+- A run with nothing to analyse says why.
+
+Branch names, repository names and settings can come from a fork, so the summary
+shows them as plain text, never as links or formatting. The warnings stay
+annotations on the same page, so the summary only counts them. GitHub shows at
+most 10 warnings as annotations. With more, the summary points to the log
+instead.
 
 ## Languages on pull requests from forks
 

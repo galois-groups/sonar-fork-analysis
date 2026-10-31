@@ -61,7 +61,13 @@ function runAsAction(): void {
   process.env['INPUT_GITHUB-TOKEN'] = 'gh-token'
   process.env.ACTIONS_RUNTIME_TOKEN = 'runtime'
   process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN = 'oidc'
-  process.env.GITHUB_STEP_SUMMARY = '/runner/summary'
+  process.env.GITHUB_STEP_SUMMARY = join(project, 'summary.md')
+}
+
+// What the run wrote to its job summary.
+function summary(): string {
+  const path = join(project, 'summary.md')
+  return existsSync(path) ? readFileSync(path, 'utf8') : ''
 }
 
 function inputVariables(env: Record<string, string>): string[] {
@@ -122,7 +128,26 @@ describe('run', () => {
     expect(inputVariables(options!.env!)).toEqual([])
     // A step of its own would have it, with id-token: write.
     expect(options!.env!.ACTIONS_ID_TOKEN_REQUEST_TOKEN).toBe('oidc')
-    expect(options!.env!.GITHUB_STEP_SUMMARY).toBe('/runner/summary')
+    expect(options!.env!.GITHUB_STEP_SUMMARY).toBe(join(project, 'summary.md'))
+  })
+
+  it('sums up a direct analysis, with a link to it', async () => {
+    runAsAction()
+    exec.mockImplementation(async (_tool, _args, options) => {
+      mkdirSync(join(options!.cwd!, 'target', 'sonar'), { recursive: true })
+      writeFileSync(
+        join(options!.cwd!, 'target', 'sonar', 'report-task.txt'),
+        'serverUrl=https://sonarcloud.io\ndashboardUrl=https://sonarcloud.io/dashboard?id=key\nceTaskId=1\n'
+      )
+      return 0
+    })
+
+    await run()
+
+    expect(core.setFailed).not.toHaveBeenCalled()
+    expect(summary()).toContain(
+      'Analysed <code>key</code> directly with the Maven build. <a href='
+    )
   })
 
   it("refuses to build a pull request's, another repository's or a bot's run on workflow_run, and only warns for a person's push here", async () => {
@@ -460,12 +485,15 @@ describe('run in prepare mode', () => {
   })
 
   it('builds without the token and uploads only analysis settings', async () => {
+    process.env.GITHUB_STEP_SUMMARY = join(project, 'summary.md')
     mkdirSync(join(project, 'target', 'classes'), { recursive: true })
     writeFileSync(join(project, 'target', 'classes', 'App.class'), '')
     simulate(
       [
         `sonar.projectBaseDir=${project}`,
         `sonar.java.binaries=${project}/target/classes`,
+        // The tests didn't run, so there is no report to ship.
+        `sonar.coverage.jacoco.xmlReportPaths=${project}/target/jacoco.xml`,
         'sonar.host.url=http\\://127.0.0.1\\:9',
         'env.SECRET=leaked'
       ].join('\n')
@@ -497,9 +525,18 @@ describe('run in prepare mode', () => {
     expect(
       readdirSync(join(staging, '..')).filter((f) => f.endsWith('.properties'))
     ).toEqual([])
+    expect(summary()).toContain(
+      'The Sonar workflow analyses this pull request when this run finishes'
+    )
+    expect(summary()).toContain(
+      '| Artifact | <code>sonar&#45;fork&#45;analysis&#45;key</code> |\n| Settings carried over | 2 |'
+    )
+    // The zip's size, from the upload.
+    expect(summary()).toContain('| Size | 1 KB |')
   })
 
   it('warns about the settings the analysis of pull requests leaves out', async () => {
+    process.env.GITHUB_STEP_SUMMARY = join(project, 'summary.md')
     simulate(
       [
         `sonar.projectBaseDir=${project}`,
@@ -525,6 +562,10 @@ describe('run in prepare mode', () => {
     expect(core.info).toHaveBeenCalledWith(
       'Ignored 1 environment variables and JVM properties'
     )
+    expect(summary()).toContain(
+      '| Settings left out | <code>sonar&#46;nodejs&#46;executable</code>, <code>sonar&#46;python&#46;file&#46;suffixes</code> |'
+    )
+    expect(summary()).toContain('1 warning: see the annotations.')
   })
 
   it('warns about an organization set only in the build', async () => {
@@ -553,6 +594,7 @@ describe('run in prepare mode', () => {
   })
 
   it('reads a Node project with the scanner CLI, and ships its type declarations', async () => {
+    process.env.GITHUB_STEP_SUMMARY = join(project, 'summary.md')
     inputs['build-tool'] = 'scanner'
     inputs['scanner-version'] = '8.1.0.6389'
     rmSync(join(project, 'pom.xml'))
@@ -592,6 +634,7 @@ describe('run in prepare mode', () => {
           ', so the scanner analyses the whole directory'
       )
     )
+    expect(summary()).toMatch(/\n\n1 warning: see the annotations\.\n$/)
   })
 
   it('ships the type declarations of a frontend that a Maven build builds', async () => {
@@ -908,6 +951,7 @@ describe('run in analyze mode', () => {
   )
 
   it('scans with trusted settings and the token only in the environment', async () => {
+    process.env.GITHUB_STEP_SUMMARY = join(project, 'summary.md')
     process.env['INPUT_GITHUB-TOKEN'] = 'gh-token'
     process.env.ACTIONS_RUNTIME_TOKEN_FOR_TEST = 'runtime'
     process.env.GITHUB_STATE = '/runner/state'
@@ -955,6 +999,12 @@ describe('run in analyze mode', () => {
     expect(
       readFileSync(join(project, 'target', 'classes', 'App.class'), 'utf8')
     ).toBe('bytes')
+    expect(summary()).toContain(
+      '### ✅ Sonar analysis\n\nAnalysed commit <code>head&#45;sh</code>'
+    )
+    expect(summary()).toContain(
+      "Languages this action isn't tested with stay off: <code>py</code>, <code>rust</code>."
+    )
   })
 
   it('analyses with the scanner CLI the workflow names', async () => {
@@ -988,12 +1038,14 @@ describe('run in analyze mode', () => {
   })
 
   it('turns off the analyzers of untested languages unless build-arguments turn one on', async () => {
+    process.env.GITHUB_STEP_SUMMARY = join(project, 'summary.md')
     prepared({
       'sonar.inclusions': 'src/**',
       'sonar.python.file.suffixes': '.java',
       'sonar.lang.patterns.rust': '**/*.java'
     })
-    inputs['build-arguments'] = '-Dsonar.lang.patterns.py=**/*.py'
+    inputs['build-arguments'] =
+      '-Dsonar.lang.patterns.py=**/*.py\n-Dsonar.lang.patterns.java=**/*.jav'
 
     await run()
 
@@ -1015,13 +1067,23 @@ describe('run in analyze mode', () => {
       )
     )
     // The scanner takes the last value it reads for a key.
-    expect(args.slice(1)).toEqual(['-Dsonar.lang.patterns.py=**/*.py'])
+    expect(args.slice(1)).toEqual([
+      '-Dsonar.lang.patterns.py=**/*.py',
+      '-Dsonar.lang.patterns.java=**/*.jav'
+    ])
     expect(core.info).toHaveBeenCalledWith(
       "The analyzers of languages this action isn't tested with stay off: rust. To turn one on, set sonar.lang.patterns.<language> in build-arguments."
     )
     expect(core.info).toHaveBeenCalledWith(
       "build-arguments set sonar.lang.patterns.py: that language's analyzer runs with the token."
     )
+    // Java is tested, so it was never off.
+    expect(summary()).toContain(
+      '\n\nTurned on by build-arguments: <code>sonar&#46;lang&#46;patterns&#46;py</code>.\n\n'
+    )
+    // Every warning of the step, not only the artifact's.
+    expect(core.warning).toHaveBeenCalledTimes(3)
+    expect(summary()).toMatch(/\n\n3 warnings: see the annotations\.\n$/)
   })
 
   it("analyses nothing without the server's languages", async () => {
@@ -1208,6 +1270,7 @@ describe('run in analyze mode', () => {
 
     it("skips when the build's pull request is gone, and closes its status", async () => {
       // Two pull requests had this head; #8 closed before this run, which built it.
+      process.env.GITHUB_STEP_SUMMARY = join(project, 'summary.md')
       triggeredBy('pull_request', 'fork/repo')
       knowing({
         8: {
@@ -1231,6 +1294,9 @@ describe('run in analyze mode', () => {
         'pending: Analysing',
         'success: Skipped: the build was for #8'
       ])
+      expect(summary()).toBe(
+        "### ⏭️ No Sonar analysis\n\nThe build's pull request #8 is closed or has newer commits: nothing to analyse.\n"
+      )
       expect(core.setFailed).not.toHaveBeenCalled()
     })
 
@@ -1262,12 +1328,16 @@ describe('run in analyze mode', () => {
     }
 
     it('stays silent when the build analysed directly', async () => {
+      process.env.GITHUB_STEP_SUMMARY = join(project, 'summary.md')
       triggeredBy('push', 'owner/repo')
       built('sonar-fork-analysis-key+direct')
 
       await run()
 
       expect(statuses()).toEqual([])
+      expect(summary()).toBe(
+        '### ⏭️ No Sonar analysis\n\nThe build already analysed this commit directly.\n'
+      )
       expect(getExecOutput).not.toHaveBeenCalled()
       expect(core.setFailed).not.toHaveBeenCalled()
       // Listed in the build's run, not this one.
@@ -1297,12 +1367,16 @@ describe('run in analyze mode', () => {
 
     it('stays silent for a project the build did not prepare', async () => {
       // A monorepo build that skipped this project because none of its files changed.
+      process.env.GITHUB_STEP_SUMMARY = join(project, 'summary.md')
       triggeredBy('pull_request', 'forker/repo')
       built('sonar-fork-analysis-other_project', 'test-reports')
 
       await run()
 
       expect(statuses()).toEqual([])
+      expect(summary()).toBe(
+        '### ⏭️ No Sonar analysis\n\nThe build prepared other projects, not <code>key</code>.\n'
+      )
       expect(getExecOutput).not.toHaveBeenCalled()
       expect(core.setFailed).not.toHaveBeenCalled()
     })
@@ -1346,12 +1420,16 @@ describe('run in analyze mode', () => {
     })
 
     it('posts nothing for a pull request that has moved on', async () => {
+      process.env.GITHUB_STEP_SUMMARY = join(project, 'summary.md')
       triggeredBy('pull_request', 'forker/repo')
       fetch.mockImplementation(async () => new Response('[]'))
 
       await run()
 
       expect(statuses()).toEqual([])
+      expect(summary()).toBe(
+        '### ⏭️ No Sonar analysis\n\nNo open pull request has <code>head&#45;sha</code> as its head any more; a newer run analyses it.\n'
+      )
       expect(core.notice).toHaveBeenCalledWith(
         expect.stringContaining('No open pull request')
       )
@@ -1429,11 +1507,15 @@ describe('run in analyze mode', () => {
     })
 
     it('reports a build that left nothing to analyse, before checking out', async () => {
+      process.env.GITHUB_STEP_SUMMARY = join(project, 'summary.md')
       triggeredBy('pull_request', 'forker/repo')
 
       await run()
 
       expect(statuses()).toEqual(['failure: The build left nothing to analyse'])
+      expect(summary()).toBe(
+        '### ⏭️ No Sonar analysis\n\nNo <code>sonar&#45;fork&#45;analysis&#45;key</code> artifact: the build left nothing to analyse.\n'
+      )
       expect(getExecOutput).not.toHaveBeenCalled()
       expect(core.setFailed).not.toHaveBeenCalled()
     })

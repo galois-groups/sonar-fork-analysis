@@ -85,6 +85,20 @@ export default defineConfig(
     }
   },
   {
+    files: ['src/**'],
+    ignores: ['src/warnings.ts'],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        {
+          object: 'core',
+          property: 'warning',
+          message: 'Use warn() from warnings.ts: the job summary counts it.'
+        }
+      ]
+    }
+  },
+  {
     files: ['__tests__/**', '__fixtures__/**'],
     extends: [vitest.configs.recommended],
     // Tests read JSON and mock arguments loosely, and write mocks of async functions as async: a value

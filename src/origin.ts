@@ -1,4 +1,5 @@
 import type { components } from '@octokit/openapi-webhooks-types'
+import { reason, type Reason } from './summary.js'
 
 // The payloads the action reads, as GitHub documents them. GitHub writes the file, so its shape is
 // trusted; the values in it may still come from a fork.
@@ -145,7 +146,7 @@ export async function pullRequestGone(
 
 export async function resolveOrigin(
   context: Context
-): Promise<Origin | { skip: string }> {
+): Promise<Origin | { skip: Reason }> {
   const { eventName, event } = context
   if (eventName === 'workflow_run') {
     const run = (event as WorkflowRunEvent).workflow_run
@@ -159,7 +160,7 @@ export async function resolveOrigin(
       // up by; the owner may be missing too, but the repository's full name always has it.
       if (!run.head_branch)
         return {
-          skip: 'The run names no branch to find its pull request by.'
+          skip: reason`The run names no branch to find its pull request by.`
         }
       const [owner = ''] = run.head_repository.full_name.split('/')
       origin.pullRequests = await findPullRequests(
@@ -170,7 +171,7 @@ export async function resolveOrigin(
       )
       if (origin.pullRequests.length === 0) {
         return {
-          skip: `No open pull request has ${run.head_sha} as its head any more; a newer run analyses it.`
+          skip: reason`No open pull request has ${run.head_sha} as its head any more; a newer run analyses it.`
         }
       }
     } else if (
@@ -180,7 +181,7 @@ export async function resolveOrigin(
       // A fork's pull request can add a workflow with the same name on another event; its branch
       // must not pass for one of ours.
       return {
-        skip: `The run comes from a branch of ${run.head_repository.full_name} rather than a pull request: nothing to analyse.`
+        skip: reason`The run comes from a branch of ${run.head_repository.full_name} rather than a pull request: nothing to analyse.`
       }
     } else if (
       run.head_branch &&

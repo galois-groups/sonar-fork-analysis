@@ -1,6 +1,7 @@
 import * as core from '@actions/core'
 import { readFileSync } from 'node:fs'
 import type { WorkflowRunEvent } from './origin.js'
+import { warn } from './warnings.js'
 
 type State = 'pending' | 'success' | 'failure'
 
@@ -46,7 +47,7 @@ export function statusReporter(target: StatusTarget): Reporter {
         })
       })
     } catch (error) {
-      core.warning(
+      warn(
         `Could not post the ${target.name} status: ${error instanceof Error ? error.message : String(error)}`
       )
       return false
@@ -61,7 +62,7 @@ export function statusReporter(target: StatusTarget): Reporter {
         `Not posting the ${target.name} status: the token lacks statuses: write`
       )
     } else if (!response.ok) {
-      core.warning(
+      warn(
         `Could not post the ${target.name} status: GitHub answered ${response.status}`
       )
     }
@@ -133,7 +134,7 @@ export async function reportInterrupted(): Promise<void> {
   if (!saved || !target) return
   const note = readNote(saved)
   if (!note) {
-    core.warning('Not posting the final status: its note is damaged')
+    warn('Not posting the final status: its note is damaged')
     return
   }
   await statusReporter(target)(note.state, note.description)

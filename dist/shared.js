@@ -9,7 +9,7 @@ import * as http from "http";
 import * as https from "https";
 import * as events from "events";
 import { ok } from "assert";
-import { randomInt } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 import { StringDecoder } from "string_decoder";
 import * as child from "child_process";
 import { setTimeout as setTimeout$1 } from "timers";
@@ -17940,6 +17940,29 @@ function warningCount() {
 function resetWarnings() {
 	count = 0;
 }
+var NOUNS = {
+	setting: ["setting", "settings"],
+	entry: ["path entry", "path entries"],
+	file: ["file", "files"],
+	link: ["link", "links"]
+};
+function counted(items) {
+	const parts = Object.entries(NOUNS).flatMap(([kind, [one, many]]) => {
+		const total = items.filter((item) => item.kind === kind).reduce((sum, item) => sum + ("names" in item ? item.names.length : 1), 0);
+		if (total === 0) return [];
+		return [`${total.toLocaleString("en-GB")} ${total === 1 ? one : many}`];
+	});
+	const last = parts.pop() ?? "";
+	return parts.length > 0 ? `${parts.join(", ")} and ${last}` : last;
+}
+function warnLeftOut(items, warning) {
+	if (items.length === 0) return;
+	const resume = randomUUID();
+	info(`::stop-commands::${resume}`);
+	for (const item of items) info(item.text);
+	info(`::${resume}::`);
+	warn(warning(counted(items)));
+}
 // src/checkout.ts
 var QUIET_GIT = {
 	GIT_TERMINAL_PROMPT: "0",
@@ -18206,6 +18229,6 @@ function readNote(saved) {
 		return;
 	}
 }
-export { BearerCredentialHandler as A, __toESM as B, setFailed as C, mkdirP as D, exec as E, __commonJSMin as F, __esmMin as I, __exportAll as L, HttpCodes as M, require_undici as N, rmRF as O, require_tunnel as P, __require as R, notice as S, warning as T, error as _, cleanUpCheckout as a, info as b, resetWarnings as c, jobEnvironment as d, toolEnvironment as f, debug as g, retry as h, trackedReporter as i, HttpClient as j, which as k, warn as l, realPath as m, reportInterrupted as n, prepareCheckout as o, realLocation as p, runStatusTarget as r, verifyCheckout as s, noReporter as t, warningCount as u, getInput as v, setSecret as w, isDebug as x, getMultilineInput as y, __toCommonJS as z };
+export { which as A, __toCommonJS as B, notice as C, exec as D, warning as E, require_tunnel as F, __commonJSMin as I, __esmMin as L, HttpClient as M, HttpCodes as N, mkdirP as O, require_undici as P, __exportAll as R, isDebug as S, setSecret as T, __toESM as V, debug as _, cleanUpCheckout as a, getMultilineInput as b, resetWarnings as c, warningCount as d, jobEnvironment as f, retry as g, realPath as h, trackedReporter as i, BearerCredentialHandler as j, rmRF as k, warn as l, realLocation as m, reportInterrupted as n, prepareCheckout as o, toolEnvironment as p, runStatusTarget as r, verifyCheckout as s, noReporter as t, warnLeftOut as u, error as v, setFailed as w, info as x, getInput as y, __require as z };
 
 //# sourceMappingURL=shared.js.map

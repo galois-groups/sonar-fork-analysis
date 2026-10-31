@@ -107,17 +107,19 @@ page:
 
 - A direct analysis shows the project, the build and a link to the analysis.
 - The build of a pull request from a fork lists what it ships to the Sonar
-  workflow: the artifact, how many settings it carries, any settings it leaves
-  out, the number of files and the size of the artifact.
+  workflow: the artifact, how many settings it carries, any settings or paths it
+  leaves out, the number of files and the size of the artifact.
 - The Sonar workflow shows the pull request, the commit and the fork it
-  analysed, a link to the analysis and what stays off.
+  analysed, a link to the analysis, what stays off and anything it left out.
 - A run with nothing to analyse says why.
 
 Branch names, repository names and settings can come from a fork, so the summary
 shows them as plain text, never as links or formatting. The warnings stay
-annotations on the same page, so the summary only counts them. GitHub shows at
-most 10 warnings as annotations. With more, the summary points to the log
-instead.
+annotations on the same page, so the summary only counts them. What the fork
+path left out is the exception. One warning counts it and the summary lists each
+item. GitHub shows at most 10 warnings as annotations. With more, the summary
+points to the log instead. GitHub also drops a summary larger than 1 MiB, so a
+long list stops after about 10,000 characters. The log has every item.
 
 ## Languages on pull requests from forks
 

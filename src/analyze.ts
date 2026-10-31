@@ -38,6 +38,7 @@ import {
   moduleTree,
   type ModuleTree
 } from './settings.js'
+import type { LeftOut } from './warnings.js'
 
 // Everything here handles an artifact built by code from a pull request, possibly a fork's, in a job
 // that holds the Sonar token. Nothing in it is trusted: no path may leave the workspace or the
@@ -90,7 +91,7 @@ export type Resolved = {
   sourceRoots: string[]
   // The report files the settings name, where they land in the checkout.
   reports: string[]
-  warnings: string[]
+  leftOut: LeftOut[]
 }
 
 export type Manifest = {
@@ -136,8 +137,8 @@ export function resolveSettings(
   workspace: string,
   home: string
 ): Resolved {
-  const warnings: string[] = []
-  const kept = allowedSettings(settings, warnings)
+  const leftOut: LeftOut[] = []
+  const kept = allowedSettings(settings, leftOut)
   const tree = moduleTree(kept)
   const places: Places = {
     workspace,
@@ -162,7 +163,7 @@ export function resolveSettings(
       continue
     }
     const base = bases.get(prefix) as string
-    const paths = resolvePaths(key, bareKey, value, base, places, warnings)
+    const paths = resolvePaths(key, bareKey, value, base, places, leftOut)
     if (!paths) continue
     properties.set(key, paths.join(','))
     if (bareKey === 'sonar.sources' || bareKey === 'sonar.tests') {
@@ -181,36 +182,42 @@ export function resolveSettings(
   for (const [prefix, base] of bases) {
     if (!withSources.has(prefix)) sourceRoots.push(realPath(base))
   }
-  return { properties, sourceRoots, reports, warnings }
+  return { properties, sourceRoots, reports, leftOut }
 }
 
 // First of all, so the allowlist and everything after it read the same module tree: a value
 // could quote the token, and sonar.modules decides how every other key is read.
 function allowedSettings(
   settings: Record<string, string>,
-  warnings: string[]
+  leftOut: LeftOut[]
 ): Map<string, string> {
   const expandable = new Map<string, string>()
   for (const [key, value] of Object.entries(settings)) {
     if (PLACEHOLDER.test(value))
-      warnings.push(
-        `Dropped ${key}: it holds a placeholder the scanner would expand`
-      )
+      leftOut.push({
+        kind: 'setting',
+        names: [key],
+        text: `Dropped ${key}: it holds a placeholder the scanner would expand`
+      })
     // Half of a surrogate pair: Node's file system reads it as U+FFFD, the scanner's Java as '?', so
     // a path checked here would not be the one used.
     else if (LONE_SURROGATE.test(key) || LONE_SURROGATE.test(value))
-      warnings.push(
-        `Dropped ${JSON.stringify(key)}: it holds half of a character`
-      )
+      leftOut.push({
+        kind: 'setting',
+        names: [key],
+        text: `Dropped ${JSON.stringify(key)}: it holds half of a character`
+      })
     else expandable.set(key, value)
   }
   const { kept, dropped, replaced, ignored } = filterSettings(expandable)
   // The build only ships what the allowlist keeps, so anything else was added to the artifact.
   const unexpected = [...dropped, ...replaced, ...ignored]
   if (unexpected.length > 0)
-    warnings.push(
-      `Dropped settings a build never ships: ${unexpected.join(', ')}`
-    )
+    leftOut.push({
+      kind: 'setting',
+      names: unexpected,
+      text: `Dropped settings a build never ships: ${unexpected.join(', ')}`
+    })
   return kept
 }
 
@@ -258,17 +265,27 @@ function resolvePaths(
   value: string,
   base: string,
   places: Places,
-  warnings: string[]
+  leftOut: LeftOut[]
 ): string[] | undefined {
   // Read as one path, the value would be none of the entries checked below.
   if (!isPathList(bareKey) && value.includes(',')) {
-    warnings.push(`Dropped ${key}: the scanner reads it as one path`)
+    leftOut.push({
+      kind: 'setting',
+      names: [key],
+      text: `Dropped ${key}: the scanner reads it as one path`
+    })
     return undefined
   }
   const paths: string[] = []
   for (const entry of value.split(',').filter((path) => path !== '')) {
     const path = acceptedPath(entry, bareKey, base, places)
-    if (path === undefined) warnings.push(`Dropped ${key} entry: ${entry}`)
+    if (path === undefined)
+      leftOut.push({
+        kind: 'entry',
+        key,
+        entry,
+        text: `Dropped ${key} entry: ${entry}`
+      })
     else paths.push(path)
   }
   return paths
@@ -456,9 +473,9 @@ export function unpackWorkspace(
   workspace: string,
   protectedRoots: string[],
   reports: string[] = []
-): string[] {
-  const warnings: string[] = []
-  if (!existsSync(from)) return warnings
+): LeftOut[] {
+  const leftOut: LeftOut[] = []
+  if (!existsSync(from)) return leftOut
   const roots = new Set(
     protectedRoots
       .map((root) => identity(root, true))
@@ -468,18 +485,23 @@ export function unpackWorkspace(
     if (!lstatSync(source).isFile()) continue
     const rel = relative(from, source)
     const reason = unpackFile(source, rel, workspace, roots, reports)
-    if (reason) warnings.push(`Skipped ${rel}: ${reason}`)
+    if (reason)
+      leftOut.push({
+        kind: 'file',
+        names: [rel],
+        text: `Skipped ${rel}: ${reason}`
+      })
   }
   removeProjectSettings(workspace)
-  return warnings
+  return leftOut
 }
 
 // The engine follows links into directories and only checks the path it reached a file by, so a link
 // in the checkout to anywhere else, /proc/self for one, would have Sonar index and upload what is
 // there. Links staying in the checkout are left to the checks on settings and the scanner's own.
-export function removeOutwardLinks(workspace: string): string[] {
+export function removeOutwardLinks(workspace: string): LeftOut[] {
   const realWorkspace = realPath(workspace)
-  const warnings: string[] = []
+  const leftOut: LeftOut[] = []
   const entries = entriesUnder(workspace)
   for (const entry of entries) {
     if (!entry.isSymbolicLink()) continue
@@ -492,27 +514,33 @@ export function removeOutwardLinks(workspace: string): string[] {
     }
     if (target === undefined || !isWithin(target, realWorkspace)) {
       unlinkSync(path)
-      warnings.push(
-        `Removed ${relative(workspace, path)}: a link leading out of the checkout`
-      )
+      const name = relative(workspace, path)
+      leftOut.push({
+        kind: 'link',
+        names: [name],
+        text: `Removed ${name}: a link leading out of the checkout`
+      })
     }
   }
-  return warnings
+  return leftOut
 }
 
 // Makes the links a Node project's node_modules had again, without which TypeScript finds no package
 // a workspace or pnpm links. Each one stays in a node_modules directory, leads to a directory in the
 // checkout and never into .git, which keeps them to what a fork could commit itself.
-export function recreateLinks(workspace: string, links: unknown): string[] {
+export function recreateLinks(workspace: string, links: unknown): LeftOut[] {
   if (!Array.isArray(links)) return []
-  const warnings: string[] = []
+  const leftOut: LeftOut[] = []
   const realWorkspace = realPath(workspace)
   for (const link of links) {
     const { path, target } = isRecord(link) ? link : {}
     if (typeof path !== 'string' || typeof target !== 'string') {
-      warnings.push(
-        `Skipped a link: ${JSON.stringify(link)} names no path and target`
-      )
+      const name = JSON.stringify(link)
+      leftOut.push({
+        kind: 'link',
+        names: [name],
+        text: `Skipped a link: ${name} names no path and target`
+      })
       continue
     }
     let reason: string | undefined
@@ -522,9 +550,14 @@ export function recreateLinks(workspace: string, links: unknown): string[] {
       // A name the file system refuses, e.g. one with a NUL byte or too long for Windows.
       reason = error instanceof Error ? error.message : String(error)
     }
-    if (reason) warnings.push(`Skipped link ${path}: ${reason}`)
+    if (reason)
+      leftOut.push({
+        kind: 'link',
+        names: [path],
+        text: `Skipped link ${path}: ${reason}`
+      })
   }
-  return warnings
+  return leftOut
 }
 
 // The segments of a relative path that stays below where it starts and out of .git.

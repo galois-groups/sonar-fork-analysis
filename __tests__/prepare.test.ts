@@ -350,8 +350,13 @@ describe('stageAnalysis', () => {
       'maven'
     )
     expect(staged.settings['sonar.coverageReportPaths']).toBeUndefined()
-    expect(staged.warnings).toEqual([
-      'Dropped sonar.coverageReportPaths entry outside the workspace: ../secrets/a.xml'
+    expect(staged.leftOut).toEqual([
+      {
+        kind: 'entry',
+        key: 'sonar.coverageReportPaths',
+        entry: '../secrets/a.xml',
+        text: 'Dropped sonar.coverageReportPaths entry outside the workspace: ../secrets/a.xml'
+      }
     ])
     expect(existsSync(join(staging, 'workspace'))).toBe(false)
   })
@@ -392,7 +397,7 @@ describe('stageAnalysis', () => {
       'maven'
     )
     expect(staged.settings['sonar.sources']).toBe('')
-    expect(staged.warnings).toEqual([
+    expect(staged.leftOut.map((item) => item.text)).toEqual([
       'Dropped sonar.sources entry outside the workspace: /etc/passwd'
     ])
   })

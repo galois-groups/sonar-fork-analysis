@@ -1,7 +1,7 @@
 // One job summary per run, as Markdown for the run's summary page. Names, paths and messages may come
 // from a fork's build, its artifact or its pull request: they reach the summary only through escaped().
 import { appendFileSync } from 'node:fs'
-import { warn } from './warnings.js'
+import { warn, type LeftOut } from './warnings.js'
 
 // Every other character becomes a character reference, which Markdown and HTML both show as itself:
 // no link, image, emphasis, table cell or tag can start from it, nor an autolink from a dot or colon.
@@ -26,6 +26,28 @@ export const escaped = (text: string): string => references(text, true)
 const code = (text: string): string => `<code>${escaped(text)}</code>`
 
 const list = (items: string[]): string => items.map(code).join(', ')
+
+function table(rows: [string, string][]): string {
+  const body = rows.map(([name, value]) => `| ${name} | ${value} |`).join('\n')
+  return `| | |\n|---|---|\n${body}`
+}
+
+const shown = (item: LeftOut): string =>
+  'names' in item ? list(item.names) : `${code(item.key)}: ${code(item.entry)}`
+
+const LEFT_OUT: [LeftOut['kind'], string][] = [
+  ['setting', 'Settings'],
+  ['entry', 'Path entries'],
+  ['file', 'Files'],
+  ['link', 'Links']
+]
+
+function leftOutRows(items: LeftOut[]): [string, string][] {
+  return LEFT_OUT.flatMap(([kind, name]): [string, string][] => {
+    const ofKind = items.filter((item) => item.kind === kind)
+    return ofKind.length > 0 ? [[name, ofKind.map(shown).join(', ')]] : []
+  })
+}
 
 const count = (value: number): string => value.toLocaleString('en-GB')
 
@@ -106,6 +128,7 @@ export function prepareSummary(facts: {
   pullRequest: boolean
   settings: number
   leftOut: string[]
+  outside: LeftOut[]
   files: number
   // The zip's size, as the run's artifact list shows it; the upload may not report one.
   bytes?: number | undefined
@@ -117,11 +140,15 @@ export function prepareSummary(facts: {
   ]
   if (facts.leftOut.length > 0)
     rows.push(['Settings left out', list(facts.leftOut)])
+  if (facts.outside.length > 0)
+    rows.push([
+      'Paths outside the workspace',
+      facts.outside.map(shown).join(', ')
+    ])
   rows.push(['Files shipped', count(facts.files)])
   if (facts.bytes !== undefined) rows.push(['Size', size(facts.bytes)])
-  const table = rows.map(([name, value]) => `| ${name} | ${value} |`).join('\n')
   const next = facts.pullRequest ? 'this pull request' : 'this build'
-  return `### 📦 Sonar analysis prepared\n\nThe Sonar workflow analyses ${next} when this run finishes, using what this build ships:\n\n| | |\n|---|---|\n${table}${warned(facts.warnings)}`
+  return `### 📦 Sonar analysis prepared\n\nThe Sonar workflow analyses ${next} when this run finishes, using what this build ships:\n\n${table(rows)}${warned(facts.warnings)}`
 }
 
 export function analyzeSummary(facts: {
@@ -132,6 +159,7 @@ export function analyzeSummary(facts: {
   scannerVersion: string
   untested: string[]
   turnedOn: string[]
+  leftOut: LeftOut[]
   report?: Report | undefined
   warnings: number
 }): string {
@@ -149,7 +177,11 @@ export function analyzeSummary(facts: {
     facts.turnedOn.length > 0
       ? `\n\nTurned on by build-arguments: ${list(facts.turnedOn)}.`
       : ''
-  return `### ✅ Sonar analysis${what}\n\nAnalysed commit ${code(facts.commit.slice(0, 7))}${onBranch} of ${code(facts.repository)} with the scanner CLI ${escaped(facts.scannerVersion)}.${link(facts.report)}\n\nTurned off: dependency analysis and build-system autoconfiguration.${untested}${on}${warned(facts.warnings)}`
+  const left =
+    facts.leftOut.length > 0
+      ? `\n\nLeft out of the analysis:\n\n${table(leftOutRows(facts.leftOut))}`
+      : ''
+  return `### ✅ Sonar analysis${what}\n\nAnalysed commit ${code(facts.commit.slice(0, 7))}${onBranch} of ${code(facts.repository)} with the scanner CLI ${escaped(facts.scannerVersion)}.${link(facts.report)}\n\nTurned off: dependency analysis and build-system autoconfiguration.${untested}${on}${left}${warned(facts.warnings)}`
 }
 
 export type Reason = { text: string; markdown: string }

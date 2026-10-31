@@ -21,16 +21,27 @@ import {
   checkNoLinks,
   formatProperties,
   readManifest,
-  recreateLinks,
-  removeOutwardLinks,
+  recreateLinks as recreate,
+  removeOutwardLinks as removeOutward,
   removeProjectSettings,
   resolveSettings,
   trustedProperties,
-  unpackWorkspace
+  unpackWorkspace as unpack
 } from '../src/analyze.js'
 import { parseProperties } from '../src/properties.js'
 import { NO_FILE } from '../src/languages.js'
+import type { LeftOut } from '../src/warnings.js'
 import { settingText, settingsWithoutPlaceholders } from './arbitraries.js'
+
+// What was left out, as the log says it.
+const texts = (items: LeftOut[]): string[] => items.map((item) => item.text)
+const unpackWorkspace = (...args: Parameters<typeof unpack>): string[] =>
+  texts(unpack(...args))
+const recreateLinks = (...args: Parameters<typeof recreate>): string[] =>
+  texts(recreate(...args))
+const removeOutwardLinks = (
+  ...args: Parameters<typeof removeOutward>
+): string[] => texts(removeOutward(...args))
 
 let root: string
 let workspace: string
@@ -122,7 +133,7 @@ describe('resolveSettings', () => {
       home
     )
     expect(resolved.properties.size).toBe(0)
-    expect(resolved.warnings).toEqual([
+    expect(texts(resolved.leftOut)).toEqual([
       'Dropped settings a build never ships: sonar.sca.enabled, sonar.sca.mavenOptions, sonar.host.url, sonar.scanner.javaOpts, sonar.projectKey'
     ])
   })
@@ -139,7 +150,7 @@ describe('resolveSettings', () => {
     expect(
       resolved.properties.get('sonar.coverage.jacoco.xmlReportPaths')
     ).toBe(join(workspace, 'target/jacoco.xml'))
-    expect(resolved.warnings).toEqual([
+    expect(texts(resolved.leftOut)).toEqual([
       'Dropped sonar.coverage.jacoco.xmlReportPaths entry: **/jacoco.xml'
     ])
   })
@@ -162,7 +173,7 @@ describe('resolveSettings', () => {
         ''
       )
       expect(resolved.properties.get('sonar.typescript.tsconfigPaths')).toBe('')
-      expect(resolved.warnings).toHaveLength(3)
+      expect(texts(resolved.leftOut)).toHaveLength(3)
     }
   )
 
@@ -206,7 +217,7 @@ describe('resolveSettings', () => {
       home
     )
     expect(resolved.properties.get('sonar.java.binaries')).toBe('')
-    expect(resolved.warnings).toHaveLength(4)
+    expect(texts(resolved.leftOut)).toHaveLength(4)
   })
 
   it.skipIf(windows)(
@@ -219,7 +230,7 @@ describe('resolveSettings', () => {
         home
       )
       expect(resolved.properties.get('sonar.java.binaries')).toBe('')
-      expect(resolved.warnings).toHaveLength(1)
+      expect(texts(resolved.leftOut)).toHaveLength(1)
     }
   )
 
@@ -231,7 +242,7 @@ describe('resolveSettings', () => {
       home
     )
     expect(resolved.properties.get('sonar.java.binaries')).toBe('')
-    expect(resolved.warnings).toHaveLength(1)
+    expect(texts(resolved.leftOut)).toHaveLength(1)
   })
 
   it('accepts build directories that only appear when unpacking', () => {
@@ -247,7 +258,7 @@ describe('resolveSettings', () => {
     expect(resolved.properties.get('sonar.projectBuildDir')).toBe(
       join(workspace, 'target')
     )
-    expect(resolved.warnings).toEqual([])
+    expect(texts(resolved.leftOut)).toEqual([])
     expect(resolved.sourceRoots).toEqual([])
   })
 
@@ -334,7 +345,7 @@ describe('resolveSettings', () => {
       home
     )
     expect([...resolved.properties.keys()]).toEqual(['sonar.java.source'])
-    expect(resolved.warnings).toHaveLength(2)
+    expect(texts(resolved.leftOut)).toHaveLength(2)
   })
 
   it('follows links in the checkout before accepting a path', () => {
@@ -376,7 +387,7 @@ describe('resolveSettings', () => {
       'sonar.sources': join(workspace, 'src'),
       'sonar.projectVersion': 'costs $5 {or more}'
     })
-    expect(resolved.warnings).toHaveLength(3)
+    expect(texts(resolved.leftOut)).toHaveLength(3)
   })
 
   it('reads the module tree only after dropping placeholders', () => {
@@ -661,8 +672,12 @@ describe('removeOutwardLinks', () => {
     'removes a link that climbs out of the checkout through another link',
     () => {
       climbOut()
-      expect(removeOutwardLinks(workspace)).toEqual([
-        `Removed ${join('a', 'leak')}: a link leading out of the checkout`
+      expect(removeOutward(workspace)).toEqual([
+        {
+          kind: 'link',
+          names: [join('a', 'leak')],
+          text: `Removed ${join('a', 'leak')}: a link leading out of the checkout`
+        }
       ])
       expect(lstatSync(join(workspace, 'a/up')).isSymbolicLink()).toBe(true)
     }
@@ -721,7 +736,7 @@ describe('resolveSettings and the scanner', () => {
     expect(resolved.properties.get('sonar.sources')).toBe('')
     expect(resolved.properties.get('sonar.java.binaries')).toBe('')
     expect(resolved.properties.get('sonar.tests')).toBe('')
-    expect(resolved.warnings).toHaveLength(4)
+    expect(texts(resolved.leftOut)).toHaveLength(4)
   })
 
   it.skipIf(windows)('reads single paths whole, commas included', () => {
@@ -1250,3 +1265,52 @@ function hideBehindDecoy(parent: string): Buffer {
 function readdirOrEmpty(directory: string): string[] {
   return existsSync(directory) ? readdirSync(directory) : []
 }
+
+// The job summary lists them by kind.
+describe('what the analysis leaves out', () => {
+  it('names each item by its kind', () => {
+    const resolved = resolveSettings(
+      {
+        'sonar.host.url': 'https://evil.example.com',
+        'sonar.projectDescription': '${env.SONAR_TOKEN}',
+        'sonar.exclusions\udfff': 'x',
+        'sonar.projectBuildDir': '{workspace}/a,{workspace}/b',
+        'sonar.coverage.jacoco.xmlReportPaths': '**/jacoco.xml'
+      },
+      workspace,
+      home
+    )
+    file(join(workspace, 'libs/tool.jar'))
+    file(join(artifact, 'libs/tool.jar'))
+
+    expect([
+      ...resolved.leftOut,
+      ...unpack(artifact, workspace, []),
+      ...recreate(workspace, [{ path: 'src/x', target: 'src' }])
+    ]).toEqual([
+      expect.objectContaining({
+        kind: 'setting',
+        names: ['sonar.projectDescription']
+      }),
+      expect.objectContaining({
+        kind: 'setting',
+        names: ['sonar.exclusions\udfff']
+      }),
+      expect.objectContaining({ kind: 'setting', names: ['sonar.host.url'] }),
+      expect.objectContaining({
+        kind: 'setting',
+        names: ['sonar.projectBuildDir']
+      }),
+      expect.objectContaining({
+        kind: 'entry',
+        key: 'sonar.coverage.jacoco.xmlReportPaths',
+        entry: '**/jacoco.xml'
+      }),
+      expect.objectContaining({
+        kind: 'file',
+        names: [join('libs', 'tool.jar')]
+      }),
+      expect.objectContaining({ kind: 'link', names: ['src/x'] })
+    ])
+  })
+})

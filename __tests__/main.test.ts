@@ -20,7 +20,7 @@ import {
   writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, sep } from 'node:path'
 import * as artifact from '../__fixtures__/artifact.js'
 import * as core from '../__fixtures__/core.js'
 import { linux } from '../__fixtures__/platform.js'
@@ -568,6 +568,31 @@ describe('run in prepare mode', () => {
     expect(summary()).toContain('1 warning: see the annotations.')
   })
 
+  it('warns once about the paths outside the workspace', async () => {
+    process.env.GITHUB_STEP_SUMMARY = join(project, 'summary.md')
+    simulate(
+      [
+        `sonar.projectBaseDir=${project}`,
+        'sonar.sources=/etc/passwd,/etc/hosts'
+      ].join('\n')
+    )
+
+    await run()
+
+    expect(core.setFailed).not.toHaveBeenCalled()
+    expect(core.warning.mock.calls).toEqual([
+      [
+        'The artifact leaves out 2 path entries outside the workspace. The job summary lists them.'
+      ]
+    ])
+    expect(core.info).toHaveBeenCalledWith(
+      'Dropped sonar.sources entry outside the workspace: /etc/passwd'
+    )
+    expect(summary()).toContain(
+      '| Paths outside the workspace | <code>sonar&#46;sources</code>: <code>&#47;etc&#47;passwd</code>, <code>sonar&#46;sources</code>: <code>&#47;etc&#47;hosts</code> |'
+    )
+  })
+
   it('warns about an organization set only in the build', async () => {
     simulate(
       [`sonar.projectBaseDir=${project}`, 'sonar.organization=org'].join('\n')
@@ -1022,7 +1047,8 @@ describe('run in analyze mode', () => {
 
     await run()
 
-    const stop = core.info.mock.calls.find(([message]) =>
+    // The last one: what the analysis left out is logged the same way, before.
+    const stop = core.info.mock.calls.findLast(([message]) =>
       message.startsWith('::stop-commands::')
     )
     const resume = stop![0].replace('::stop-commands::', '')
@@ -1061,10 +1087,13 @@ describe('run in analyze mode', () => {
     expect(settings).not.toMatch(
       /patterns\.(java|ts)=|file\.suffixes|\*\*\/\*\.java/
     )
-    expect(core.warning).toHaveBeenCalledWith(
+    expect(core.info).toHaveBeenCalledWith(
       expect.stringMatching(
         /^Dropped settings a build never ships: .*sonar\.python\.file\.suffixes.*sonar\.lang\.patterns\.rust/
       )
+    )
+    expect(core.warning).toHaveBeenCalledWith(
+      'The analysis left out 2 settings and 1 file. The job summary lists them and the log says why.'
     )
     // The scanner takes the last value it reads for a key.
     expect(args.slice(1)).toEqual([
@@ -1081,9 +1110,13 @@ describe('run in analyze mode', () => {
     expect(summary()).toContain(
       '\n\nTurned on by build-arguments: <code>sonar&#46;lang&#46;patterns&#46;py</code>.\n\n'
     )
+    const slash = sep === '/' ? '&#47;' : '&#92;'
+    expect(summary()).toContain(
+      `\n\nLeft out of the analysis:\n\n| | |\n|---|---|\n| Settings | <code>sonar&#46;python&#46;file&#46;suffixes</code>, <code>sonar&#46;lang&#46;patterns&#46;rust</code> |\n| Files | <code>target${slash}classes${slash}App&#46;class</code> |\n`
+    )
     // Every warning of the step, not only the artifact's.
-    expect(core.warning).toHaveBeenCalledTimes(3)
-    expect(summary()).toMatch(/\n\n3 warnings: see the annotations\.\n$/)
+    expect(core.warning).toHaveBeenCalledTimes(2)
+    expect(summary()).toMatch(/\n\n2 warnings: see the annotations\.\n$/)
   })
 
   it("analyses nothing without the server's languages", async () => {

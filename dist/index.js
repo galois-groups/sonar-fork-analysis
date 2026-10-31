@@ -1,4 +1,4 @@
-import { A as BearerCredentialHandler, B as __toESM, C as setFailed, D as mkdirP, E as exec, F as __commonJSMin, I as __esmMin, L as __exportAll, M as HttpCodes, N as require_undici, O as rmRF, P as require_tunnel, R as __require, S as notice, T as warning, _ as error, b as info, c as resetWarnings, d as jobEnvironment, f as toolEnvironment, g as debug, h as retry$2, i as trackedReporter, j as HttpClient, k as which, l as warn, m as realPath, o as prepareCheckout, p as realLocation, r as runStatusTarget, s as verifyCheckout, t as noReporter, u as warningCount, v as getInput, w as setSecret, x as isDebug, y as getMultilineInput, z as __toCommonJS } from "./shared.js";
+import { A as which, B as __toCommonJS, C as notice, D as exec, E as warning, F as require_tunnel, I as __commonJSMin, L as __esmMin, M as HttpClient, N as HttpCodes, O as mkdirP, P as require_undici, R as __exportAll, S as isDebug, T as setSecret, V as __toESM, _ as debug, b as getMultilineInput, c as resetWarnings, d as warningCount, f as jobEnvironment, g as retry$2, h as realPath, i as trackedReporter, j as BearerCredentialHandler, k as rmRF, l as warn, m as realLocation, o as prepareCheckout, p as toolEnvironment, r as runStatusTarget, s as verifyCheckout, t as noReporter, u as warnLeftOut, v as error, w as setFailed, x as info, y as getInput, z as __require } from "./shared.js";
 import os, { EOL } from "os";
 import * as crypto$3 from "crypto";
 import * as fs$2 from "fs";
@@ -73663,7 +73663,7 @@ function filesUnder(directory) {
 		recursive: true
 	}).filter((entry) => entry.isFile()).map((entry) => join(entry.parentPath, entry.name));
 }
-function stagePaths(key, bareKey, value, base, roots, warnings) {
+function stagePaths(key, bareKey, value, base, roots, leftOut) {
 	const isShipped = isShippedPath(bareKey);
 	const expanded = (isPathList(bareKey) ? value.split(",") : [value]).map((path) => path.trim()).filter((path) => path !== "").flatMap((entry) => isShipped && WILDCARD.test(entry) ? globSync(entry, { cwd: base }).map(posix).sort(byCodeUnit) : [entry]);
 	const entries = [];
@@ -73673,7 +73673,12 @@ function stagePaths(key, bareKey, value, base, roots, warnings) {
 		if (isShipped && !existsSync$1(path)) continue;
 		const where = locate(path, roots);
 		if (!where) {
-			warnings.push(`Dropped ${key} entry outside the workspace: ${entry}`);
+			leftOut.push({
+				kind: "entry",
+				key,
+				entry,
+				text: `Dropped ${key} entry outside the workspace: ${entry}`
+			});
 			continue;
 		}
 		located.push(where);
@@ -73696,7 +73701,7 @@ function implicitReports(base, roots) {
 function stageAnalysis(settings, roots, staging, buildTool, pullRequest, extraFiles = [], links = []) {
 	const tree = moduleTree(settings);
 	const shipped = /* @__PURE__ */ new Map();
-	const warnings = [];
+	const leftOut = [];
 	const out = {};
 	const ship = ([root, rel]) => {
 		shipped.set(`${root}:${rel}`, [root, rel]);
@@ -73708,7 +73713,7 @@ function stageAnalysis(settings, roots, staging, buildTool, pullRequest, extraFi
 			out[key] = value;
 			continue;
 		}
-		const { entries, located } = stagePaths(key, bareKey, value, settings.get(tree.keyOf(prefix, "sonar.projectBaseDir") ?? "") ?? roots.workspace, roots, warnings);
+		const { entries, located } = stagePaths(key, bareKey, value, settings.get(tree.keyOf(prefix, "sonar.projectBaseDir") ?? "") ?? roots.workspace, roots, leftOut);
 		if (isShipped) located.forEach(ship);
 		if (entries.length > 0 || !isShipped) out[key] = entries.join(",");
 	}
@@ -73735,7 +73740,7 @@ function stageAnalysis(settings, roots, staging, buildTool, pullRequest, extraFi
 	return {
 		settings: out,
 		files: filesUnder(staging),
-		warnings
+		leftOut
 	};
 }
 // src/analyze.ts
@@ -73774,8 +73779,8 @@ function isRecord(value) {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function resolveSettings(settings, workspace, home) {
-	const warnings = [];
-	const kept = allowedSettings(settings, warnings);
+	const leftOut = [];
+	const kept = allowedSettings(settings, leftOut);
 	const tree = moduleTree(kept);
 	const places = {
 		workspace,
@@ -73794,7 +73799,7 @@ function resolveSettings(settings, workspace, home) {
 			properties.set(key, value);
 			continue;
 		}
-		const paths = resolvePaths(key, bareKey, value, bases.get(prefix), places, warnings);
+		const paths = resolvePaths(key, bareKey, value, bases.get(prefix), places, leftOut);
 		if (!paths) continue;
 		properties.set(key, paths.join(","));
 		if (bareKey === "sonar.sources" || bareKey === "sonar.tests") {
@@ -73808,13 +73813,21 @@ function resolveSettings(settings, workspace, home) {
 		properties,
 		sourceRoots,
 		reports,
-		warnings
+		leftOut
 	};
 }
-function allowedSettings(settings, warnings) {
+function allowedSettings(settings, leftOut) {
 	const expandable = /* @__PURE__ */ new Map();
-	for (const [key, value] of Object.entries(settings)) if (PLACEHOLDER.test(value)) warnings.push(`Dropped ${key}: it holds a placeholder the scanner would expand`);
-	else if (LONE_SURROGATE.test(key) || LONE_SURROGATE.test(value)) warnings.push(`Dropped ${JSON.stringify(key)}: it holds half of a character`);
+	for (const [key, value] of Object.entries(settings)) if (PLACEHOLDER.test(value)) leftOut.push({
+		kind: "setting",
+		names: [key],
+		text: `Dropped ${key}: it holds a placeholder the scanner would expand`
+	});
+	else if (LONE_SURROGATE.test(key) || LONE_SURROGATE.test(value)) leftOut.push({
+		kind: "setting",
+		names: [key],
+		text: `Dropped ${JSON.stringify(key)}: it holds half of a character`
+	});
 	else expandable.set(key, value);
 	const { kept, dropped, replaced, ignored } = filterSettings(expandable);
 	const unexpected = [
@@ -73822,7 +73835,11 @@ function allowedSettings(settings, warnings) {
 		...replaced,
 		...ignored
 	];
-	if (unexpected.length > 0) warnings.push(`Dropped settings a build never ships: ${unexpected.join(", ")}`);
+	if (unexpected.length > 0) leftOut.push({
+		kind: "setting",
+		names: unexpected,
+		text: `Dropped settings a build never ships: ${unexpected.join(", ")}`
+	});
 	return kept;
 }
 function moduleBases(kept, tree, places) {
@@ -73838,15 +73855,24 @@ function moduleBases(kept, tree, places) {
 	}
 	return bases;
 }
-function resolvePaths(key, bareKey, value, base, places, warnings) {
+function resolvePaths(key, bareKey, value, base, places, leftOut) {
 	if (!isPathList(bareKey) && value.includes(",")) {
-		warnings.push(`Dropped ${key}: the scanner reads it as one path`);
+		leftOut.push({
+			kind: "setting",
+			names: [key],
+			text: `Dropped ${key}: the scanner reads it as one path`
+		});
 		return;
 	}
 	const paths = [];
 	for (const entry of value.split(",").filter((path) => path !== "")) {
 		const path = acceptedPath(entry, bareKey, base, places);
-		if (path === void 0) warnings.push(`Dropped ${key} entry: ${entry}`);
+		if (path === void 0) leftOut.push({
+			kind: "entry",
+			key,
+			entry,
+			text: `Dropped ${key} entry: ${entry}`
+		});
 		else paths.push(path);
 	}
 	return paths;
@@ -73931,21 +73957,25 @@ function makeDirectories(workspace, segments) {
 	}
 }
 function unpackWorkspace(from, workspace, protectedRoots, reports = []) {
-	const warnings = [];
-	if (!existsSync$1(from)) return warnings;
+	const leftOut = [];
+	if (!existsSync$1(from)) return leftOut;
 	const roots = new Set(protectedRoots.map((root) => identity(root, true)).filter((id) => id !== void 0));
 	for (const source of walk(from)) {
 		if (!lstatSync(source).isFile()) continue;
 		const rel = relative(from, source);
 		const reason = unpackFile(source, rel, workspace, roots, reports);
-		if (reason) warnings.push(`Skipped ${rel}: ${reason}`);
+		if (reason) leftOut.push({
+			kind: "file",
+			names: [rel],
+			text: `Skipped ${rel}: ${reason}`
+		});
 	}
 	removeProjectSettings(workspace);
-	return warnings;
+	return leftOut;
 }
 function removeOutwardLinks(workspace) {
 	const realWorkspace = realPath(workspace);
-	const warnings = [];
+	const leftOut = [];
 	const entries = entriesUnder(workspace);
 	for (const entry of entries) {
 		if (!entry.isSymbolicLink()) continue;
@@ -73958,19 +73988,29 @@ function removeOutwardLinks(workspace) {
 		}
 		if (target === void 0 || !isWithin(target, realWorkspace)) {
 			unlinkSync(path);
-			warnings.push(`Removed ${relative(workspace, path)}: a link leading out of the checkout`);
+			const name = relative(workspace, path);
+			leftOut.push({
+				kind: "link",
+				names: [name],
+				text: `Removed ${name}: a link leading out of the checkout`
+			});
 		}
 	}
-	return warnings;
+	return leftOut;
 }
 function recreateLinks(workspace, links) {
 	if (!Array.isArray(links)) return [];
-	const warnings = [];
+	const leftOut = [];
 	const realWorkspace = realPath(workspace);
 	for (const link of links) {
 		const { path, target } = isRecord(link) ? link : {};
 		if (typeof path !== "string" || typeof target !== "string") {
-			warnings.push(`Skipped a link: ${JSON.stringify(link)} names no path and target`);
+			const name = JSON.stringify(link);
+			leftOut.push({
+				kind: "link",
+				names: [name],
+				text: `Skipped a link: ${name} names no path and target`
+			});
 			continue;
 		}
 		let reason;
@@ -73979,9 +74019,13 @@ function recreateLinks(workspace, links) {
 		} catch (error) {
 			reason = error instanceof Error ? error.message : String(error);
 		}
-		if (reason) warnings.push(`Skipped link ${path}: ${reason}`);
+		if (reason) leftOut.push({
+			kind: "link",
+			names: [path],
+			text: `Skipped link ${path}: ${reason}`
+		});
 	}
-	return warnings;
+	return leftOut;
 }
 function plainSegments(path) {
 	if (isAbsolute(path)) return void 0;
@@ -103848,6 +103892,22 @@ function references(text, split) {
 var escaped = (text) => references(text, true);
 var code = (text) => `<code>${escaped(text)}</code>`;
 var list = (items) => items.map(code).join(", ");
+function table(rows) {
+	return `| | |\n|---|---|\n${rows.map(([name, value]) => `| ${name} | ${value} |`).join("\n")}`;
+}
+var shown = (item) => "names" in item ? list(item.names) : `${code(item.key)}: ${code(item.entry)}`;
+var LEFT_OUT = [
+	["setting", "Settings"],
+	["entry", "Path entries"],
+	["file", "Files"],
+	["link", "Links"]
+];
+function leftOutRows(items) {
+	return LEFT_OUT.flatMap(([kind, name]) => {
+		const ofKind = items.filter((item) => item.kind === kind);
+		return ofKind.length > 0 ? [[name, ofKind.map(shown).join(", ")]] : [];
+	});
+}
 var count = (value) => value.toLocaleString("en-GB");
 function size(bytes) {
 	const kilobytes = Math.ceil(bytes / 1024);
@@ -103896,10 +103956,10 @@ function directSummary(facts) {
 function prepareSummary(facts) {
 	const rows = [["Artifact", code(facts.artifact)], ["Settings carried over", count(facts.settings)]];
 	if (facts.leftOut.length > 0) rows.push(["Settings left out", list(facts.leftOut)]);
+	if (facts.outside.length > 0) rows.push(["Paths outside the workspace", facts.outside.map(shown).join(", ")]);
 	rows.push(["Files shipped", count(facts.files)]);
 	if (facts.bytes !== void 0) rows.push(["Size", size(facts.bytes)]);
-	const table = rows.map(([name, value]) => `| ${name} | ${value} |`).join("\n");
-	return `### 📦 Sonar analysis prepared\n\nThe Sonar workflow analyses ${facts.pullRequest ? "this pull request" : "this build"} when this run finishes, using what this build ships:\n\n| | |\n|---|---|\n${table}${warned(facts.warnings)}`;
+	return `### 📦 Sonar analysis prepared\n\nThe Sonar workflow analyses ${facts.pullRequest ? "this pull request" : "this build"} when this run finishes, using what this build ships:\n\n${table(rows)}${warned(facts.warnings)}`;
 }
 function analyzeSummary(facts) {
 	let what = "";
@@ -103908,7 +103968,8 @@ function analyzeSummary(facts) {
 	const onBranch = facts.pullRequest && facts.branch ? ` on branch ${code(facts.branch)}` : "";
 	const untested = facts.untested.length > 0 ? `\n\nLanguages this action isn't tested with stay off: ${list(facts.untested)}.` : "";
 	const on = facts.turnedOn.length > 0 ? `\n\nTurned on by build-arguments: ${list(facts.turnedOn)}.` : "";
-	return `### ✅ Sonar analysis${what}\n\nAnalysed commit ${code(facts.commit.slice(0, 7))}${onBranch} of ${code(facts.repository)} with the scanner CLI ${escaped(facts.scannerVersion)}.${link(facts.report)}\n\nTurned off: dependency analysis and build-system autoconfiguration.${untested}${on}${warned(facts.warnings)}`;
+	const left = facts.leftOut.length > 0 ? `\n\nLeft out of the analysis:\n\n${table(leftOutRows(facts.leftOut))}` : "";
+	return `### ✅ Sonar analysis${what}\n\nAnalysed commit ${code(facts.commit.slice(0, 7))}${onBranch} of ${code(facts.repository)} with the scanner CLI ${escaped(facts.scannerVersion)}.${link(facts.report)}\n\nTurned off: dependency analysis and build-system autoconfiguration.${untested}${on}${left}${warned(facts.warnings)}`;
 }
 function reason(words, ...values) {
 	let text = words[0] ?? "";
@@ -104184,7 +104245,7 @@ async function prepare(inputs) {
 		workspace,
 		home: homedir()
 	}, staging, tool.name, pullRequestNumber(), types.files, types.links);
-	for (const warning of staged.warnings) warn(warning);
+	warnLeftOut(staged.leftOut, (counts) => `The artifact leaves out ${counts} outside the workspace. The job summary lists them.`);
 	if (!process.env.ACTIONS_RUNTIME_TOKEN) {
 		warn(`Not running in GitHub Actions, so ${name} was not uploaded: ${staging}`);
 		return;
@@ -104196,6 +104257,7 @@ async function prepare(inputs) {
 		pullRequest: pullRequestNumber() !== void 0,
 		settings: Object.keys(staged.settings).length,
 		leftOut: [...left],
+		outside: staged.leftOut,
 		files: staged.files.length,
 		bytes: upload.size,
 		warnings: warningCount()
@@ -104385,15 +104447,15 @@ async function analyzeCommit(inputs, context, origin, workspace, found) {
 	const home = join(temp, "home");
 	const resolved = resolveSettings(manifest.settings, workspace, home);
 	removeProjectSettings(workspace);
-	const warnings = [
+	const leftOut = [
 		...removedLinks,
-		...resolved.warnings,
+		...resolved.leftOut,
 		...unpackWorkspace(join(artifact, "workspace"), workspace, resolved.sourceRoots, resolved.reports),
 		...recreateLinks(workspace, manifest.links)
 	];
 	if (existsSync$1(join(artifact, "home"))) cpSync(join(artifact, "home"), home, { recursive: true });
-	if (choiceWarning) warnings.push(choiceWarning);
-	for (const warning of warnings) warn(warning);
+	warnLeftOut(leftOut, (counts) => `The analysis left out ${counts}. The job summary lists them and the log says why.`);
+	if (choiceWarning) warn(choiceWarning);
 	const properties = resolved.properties;
 	if (!properties.has("sonar.projectBaseDir")) properties.set("sonar.projectBaseDir", workspace);
 	const languages = await serverLanguages(languagesHost(inputs.hostUrl, inputs.buildArguments), inputs.token);
@@ -104435,6 +104497,7 @@ async function analyzeCommit(inputs, context, origin, workspace, found) {
 		scannerVersion: inputs.scannerVersion,
 		untested: off,
 		turnedOn,
+		leftOut,
 		report: existsSync$1(reportTask) ? readReport(readFileSync$1(reportTask, "utf8")) : void 0,
 		warnings: warningCount()
 	}));

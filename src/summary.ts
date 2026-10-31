@@ -1,7 +1,7 @@
 // One job summary per run, as Markdown for the run's summary page. Names, paths and messages may come
 // from a fork's build, its artifact or its pull request: they reach the summary only through escaped().
 import { appendFileSync } from 'node:fs'
-import { warn } from './warnings.js'
+import { warn, type LeftOut } from './warnings.js'
 
 // Every other character becomes a character reference, which Markdown and HTML both show as itself:
 // no link, image, emphasis, table cell or tag can start from it, nor an autolink from a dot or colon.
@@ -27,7 +27,61 @@ const code = (text: string): string => `<code>${escaped(text)}</code>`
 
 const list = (items: string[]): string => items.map(code).join(', ')
 
+function table(rows: [string, string][]): string {
+  const body = rows.map(([name, value]) => `| ${name} | ${value} |`).join('\n')
+  return `| | |\n|---|---|\n${body}`
+}
+
 const count = (value: number): string => value.toLocaleString('en-GB')
+
+// GitHub drops a step's whole summary above 1 MiB, and an artifact can name any number of files of any
+// length. Each list stops at this many characters as written, after escaping.
+const BUDGET = 10_000
+
+type Named = string | { key: string; entry: string }
+
+const named = (items: LeftOut[]): Named[] =>
+  items.flatMap((item): Named[] => ('names' in item ? item.names : [item]))
+
+// Escaping never shortens a name, so one already too long isn't escaped at all.
+function shown(item: Named): string | undefined {
+  if (typeof item === 'string')
+    return item.length > BUDGET ? undefined : code(item)
+  if (item.key.length + item.entry.length > BUDGET) return undefined
+  return `${code(item.key)}: ${code(item.entry)}`
+}
+
+function bounded(items: Named[]): string {
+  const pieces: string[] = []
+  let length = 0
+  for (const item of items) {
+    const piece = shown(item)
+    if (piece === undefined) break
+    length += piece.length + 2
+    if (length > BUDGET) break
+    pieces.push(piece)
+  }
+  const rest = items.length - pieces.length
+  if (rest === 0) return pieces.join(', ')
+  if (pieces.length === 0) return 'Too long to show here: see the log'
+  return `${pieces.join(', ')} and ${count(rest)} more: see the log`
+}
+
+const LEFT_OUT: Record<LeftOut['kind'], string> = {
+  setting: 'Settings',
+  entry: 'Path entries',
+  file: 'Files',
+  link: 'Links'
+}
+
+function leftOutRows(items: LeftOut[]): [string, string][] {
+  return Object.entries(LEFT_OUT).flatMap(
+    ([kind, name]): [string, string][] => {
+      const ofKind = items.filter((item) => item.kind === kind)
+      return ofKind.length > 0 ? [[name, bounded(named(ofKind))]] : []
+    }
+  )
+}
 
 // Rounded up, so a small artifact never reads as empty.
 function size(bytes: number): string {
@@ -106,6 +160,7 @@ export function prepareSummary(facts: {
   pullRequest: boolean
   settings: number
   leftOut: string[]
+  outside: LeftOut[]
   files: number
   // The zip's size, as the run's artifact list shows it; the upload may not report one.
   bytes?: number | undefined
@@ -116,12 +171,13 @@ export function prepareSummary(facts: {
     ['Settings carried over', count(facts.settings)]
   ]
   if (facts.leftOut.length > 0)
-    rows.push(['Settings left out', list(facts.leftOut)])
+    rows.push(['Settings left out', bounded(facts.leftOut)])
+  if (facts.outside.length > 0)
+    rows.push(['Paths outside the workspace', bounded(named(facts.outside))])
   rows.push(['Files shipped', count(facts.files)])
   if (facts.bytes !== undefined) rows.push(['Size', size(facts.bytes)])
-  const table = rows.map(([name, value]) => `| ${name} | ${value} |`).join('\n')
   const next = facts.pullRequest ? 'this pull request' : 'this build'
-  return `### 📦 Sonar analysis prepared\n\nThe Sonar workflow analyses ${next} when this run finishes, using what this build ships:\n\n| | |\n|---|---|\n${table}${warned(facts.warnings)}`
+  return `### 📦 Sonar analysis prepared\n\nThe Sonar workflow analyses ${next} when this run finishes, using what this build ships:\n\n${table(rows)}${warned(facts.warnings)}`
 }
 
 export function analyzeSummary(facts: {
@@ -132,6 +188,7 @@ export function analyzeSummary(facts: {
   scannerVersion: string
   untested: string[]
   turnedOn: string[]
+  leftOut: LeftOut[]
   report?: Report | undefined
   warnings: number
 }): string {
@@ -149,7 +206,11 @@ export function analyzeSummary(facts: {
     facts.turnedOn.length > 0
       ? `\n\nTurned on by build-arguments: ${list(facts.turnedOn)}.`
       : ''
-  return `### ✅ Sonar analysis${what}\n\nAnalysed commit ${code(facts.commit.slice(0, 7))}${onBranch} of ${code(facts.repository)} with the scanner CLI ${escaped(facts.scannerVersion)}.${link(facts.report)}\n\nTurned off: dependency analysis and build-system autoconfiguration.${untested}${on}${warned(facts.warnings)}`
+  const left =
+    facts.leftOut.length > 0
+      ? `\n\nLeft out of the analysis:\n\n${table(leftOutRows(facts.leftOut))}`
+      : ''
+  return `### ✅ Sonar analysis${what}\n\nAnalysed commit ${code(facts.commit.slice(0, 7))}${onBranch} of ${code(facts.repository)} with the scanner CLI ${escaped(facts.scannerVersion)}.${link(facts.report)}\n\nTurned off: dependency analysis and build-system autoconfiguration.${untested}${on}${left}${warned(facts.warnings)}`
 }
 
 export type Reason = { text: string; markdown: string }

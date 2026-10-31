@@ -262,15 +262,17 @@ from a tool Sonar adds later works without a new release of this action. The
 action checks settings ending in `Paths` one entry at a time. That assumes the
 scanner reads them as lists, which every documented one does.
 
-The filtering can produce two warnings:
+The filtering tells you about two things:
 
-- _The analysis of pull requests leaves out these settings_ comes from the build
-  when it leaves something behind. If the analysis needs it, pass it with
-  `build-arguments` in the Sonar workflow. That's your own configuration, so
-  it's trusted.
-- _Dropped settings a build never ships_ comes from the Sonar workflow when the
-  artifact holds a setting no build would produce. Either someone tampered with
-  the artifact or the two workflows run different versions of the action.
+- _The analysis of pull requests leaves out these settings_ is a warning from
+  the build when it leaves something behind. If the analysis needs it, pass it
+  with `build-arguments` in the Sonar workflow. That's your own configuration,
+  so it's trusted.
+- _Dropped settings a build never ships_ is a line in the Sonar workflow's log
+  when the artifact holds a setting no build would produce. Either someone
+  tampered with the artifact or the two workflows run different versions of the
+  action. One warning counts everything the analysis left out. The job summary
+  lists it.
 
 ## How it's tested
 

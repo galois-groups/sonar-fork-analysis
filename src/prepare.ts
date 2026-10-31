@@ -22,6 +22,7 @@ import {
   isTypeInformation,
   moduleTree
 } from './settings.js'
+import type { LeftOut } from './warnings.js'
 
 export const ARTIFACT_FORMAT = 1
 
@@ -298,7 +299,7 @@ function stagePaths(
   value: string,
   base: string,
   roots: Roots,
-  warnings: string[]
+  leftOut: LeftOut[]
 ): { entries: string[]; located: [Root, string][] } {
   const isShipped = isShippedPath(bareKey)
   // The scanner reads only lists as comma-separated, any other path setting as one path.
@@ -318,7 +319,12 @@ function stagePaths(
     if (isShipped && !existsSync(path)) continue
     const where = locate(path, roots)
     if (!where) {
-      warnings.push(`Dropped ${key} entry outside the workspace: ${entry}`)
+      leftOut.push({
+        kind: 'entry',
+        key,
+        entry,
+        text: `Dropped ${key} entry outside the workspace: ${entry}`
+      })
       continue
     }
     located.push(where)
@@ -341,7 +347,8 @@ function implicitReports(base: string, roots: Roots): [Root, string][] {
 export type Staged = {
   settings: Record<string, string>
   files: string[]
-  warnings: string[]
+  // Entries outside the workspace.
+  leftOut: LeftOut[]
 }
 
 // Rewrites paths to {workspace}/… and {home}/… so the analysis can map them onto its own
@@ -357,7 +364,7 @@ export function stageAnalysis(
 ): Staged {
   const tree = moduleTree(settings)
   const shipped = new Map<string, [Root, string]>()
-  const warnings: string[] = []
+  const leftOut: LeftOut[] = []
   const out: Record<string, string> = {}
 
   const ship = ([root, rel]: [Root, string]): void => {
@@ -384,7 +391,7 @@ export function stageAnalysis(
       value,
       base,
       roots,
-      warnings
+      leftOut
     )
     if (isShipped) located.forEach(ship)
     if (entries.length > 0 || !isShipped) out[key] = entries.join(',')
@@ -415,5 +422,5 @@ export function stageAnalysis(
       2
     )
   )
-  return { settings: out, files: filesUnder(staging), warnings }
+  return { settings: out, files: filesUnder(staging), leftOut }
 }

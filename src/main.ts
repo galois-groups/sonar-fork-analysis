@@ -85,7 +85,7 @@ import {
   skippedSummary,
   writeSummary
 } from './summary.js'
-import { resetWarnings, warn, warningCount } from './warnings.js'
+import { resetWarnings, warn, warnLeftOut, warningCount } from './warnings.js'
 
 async function direct(inputs: Inputs): Promise<void> {
   if (!inputs.projectKey) throw new Error('Input required: project-key')
@@ -213,7 +213,11 @@ async function prepare(inputs: Inputs): Promise<void> {
     types.files,
     types.links
   )
-  for (const warning of staged.warnings) warn(warning)
+  warnLeftOut(
+    staged.leftOut,
+    (counts) =>
+      `The artifact leaves out ${counts} outside the workspace. The job summary lists them.`
+  )
 
   if (!process.env.ACTIONS_RUNTIME_TOKEN) {
     warn(
@@ -236,6 +240,7 @@ async function prepare(inputs: Inputs): Promise<void> {
       pullRequest: pullRequestNumber() !== undefined,
       settings: Object.keys(staged.settings).length,
       leftOut: [...left],
+      outside: staged.leftOut,
       files: staged.files.length,
       bytes: upload.size,
       warnings: warningCount()
@@ -573,9 +578,9 @@ async function analyzeCommit(
   const home = join(temp, 'home')
   const resolved = resolveSettings(manifest.settings, workspace, home)
   removeProjectSettings(workspace)
-  const warnings = [
+  const leftOut = [
     ...removedLinks,
-    ...resolved.warnings,
+    ...resolved.leftOut,
     ...unpackWorkspace(
       join(artifact, 'workspace'),
       workspace,
@@ -586,10 +591,12 @@ async function analyzeCommit(
   ]
   if (existsSync(join(artifact, 'home')))
     cpSync(join(artifact, 'home'), home, { recursive: true })
-  if (choiceWarning) warnings.push(choiceWarning)
-  // warn() escapes its message through core.warning, unlike core.info, so artifact content cannot
-  // inject commands.
-  for (const warning of warnings) warn(warning)
+  warnLeftOut(
+    leftOut,
+    (counts) =>
+      `The analysis left out ${counts}. The job summary lists them and the log says why.`
+  )
+  if (choiceWarning) warn(choiceWarning)
 
   const properties = resolved.properties
   if (!properties.has('sonar.projectBaseDir'))
@@ -653,6 +660,7 @@ async function analyzeCommit(
       scannerVersion: inputs.scannerVersion,
       untested: off,
       turnedOn,
+      leftOut,
       report: existsSync(reportTask)
         ? readReport(readFileSync(reportTask, 'utf8'))
         : undefined,

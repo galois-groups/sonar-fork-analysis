@@ -168,6 +168,7 @@ describe('prepareSummary', () => {
     pullRequest: true,
     settings: 42,
     leftOut: [],
+    outside: [],
     files: 318,
     bytes: 40_000,
     warnings: 0
@@ -195,11 +196,15 @@ describe('prepareSummary', () => {
       ...facts,
       pullRequest: false,
       leftOut: ['sonar.a', 'x|y'],
+      outside: [
+        { kind: 'entry', key: 'sonar.sources', entry: '/etc', text: '' },
+        { kind: 'entry', key: 'sonar.tests', entry: '../t', text: '' }
+      ],
       warnings: 2
     })
     expect(summary).toContain('analyses this build when this run finishes')
     expect(summary).toContain(
-      '| Settings left out | <code>sonar&#46;a</code>, <code>x&#124;y</code> |'
+      '| Settings left out | <code>sonar&#46;a</code>, <code>x&#124;y</code> |\n| Paths outside the workspace | <code>sonar&#46;sources</code>: <code>&#47;etc</code>, <code>sonar&#46;tests</code>: <code>&#46;&#46;&#47;t</code> |\n| Files shipped |'
     )
     expect(summary).toMatch(/\n\n2 warnings: see the annotations\.$/)
     expect(prepareSummary({ ...facts, warnings: 1 })).toMatch(
@@ -244,6 +249,7 @@ describe('analyzeSummary', () => {
     scannerVersion: '8.2.0.6438',
     untested: [],
     turnedOn: [],
+    leftOut: [],
     report: SONARCLOUD,
     warnings: 0
   }
@@ -278,6 +284,37 @@ describe('analyzeSummary', () => {
       'Turned on by build-arguments: <code>sonar&#46;lang&#46;patterns&#46;py</code>.'
     )
     expect(summary).toMatch(/3 warnings: see the annotations\.$/)
+  })
+
+  it('lists what it left out by kind', () => {
+    const summary = analyzeSummary({
+      ...facts,
+      leftOut: [
+        { kind: 'link', names: ['node_modules/a'], text: '' },
+        { kind: 'file', names: ['src/Evil.java'], text: '' },
+        { kind: 'setting', names: ['sonar.host.url', 'sonar.x'], text: '' },
+        { kind: 'entry', key: 'sonar.sources', entry: '.flat', text: '' },
+        { kind: 'setting', names: ['sonar.y'], text: '' }
+      ],
+      warnings: 1
+    })
+    expect(summary).toContain(
+      [
+        'build-system autoconfiguration.',
+        '',
+        'Left out of the analysis:',
+        '',
+        '| | |',
+        '|---|---|',
+        '| Settings | <code>sonar&#46;host&#46;url</code>, <code>sonar&#46;x</code>, <code>sonar&#46;y</code> |',
+        '| Path entries | <code>sonar&#46;sources</code>: <code>&#46;flat</code> |',
+        '| Files | <code>src&#47;Evil&#46;java</code> |',
+        '| Links | <code>node&#95;modules&#47;a</code> |',
+        '',
+        '1 warning'
+      ].join('\n')
+    )
+    expect(analyzeSummary(facts)).not.toContain('Left out')
   })
 
   it('names neither for the default branch', () => {

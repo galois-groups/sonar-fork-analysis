@@ -53,6 +53,16 @@ their own. It fails CI until `dist/` is rebuilt. To rebuild it, run
 `npm ci && npm run bundle` on the branch. You can also commit the `dist`
 artifact that the failed run uploads.
 
+Dependabot updates indirect dependencies only for security fixes. Otherwise they
+stay at the versions in `package-lock.json` until someone refreshes them. Before
+each release, or about once a month, run `npm update` with `--before` set to the
+date 7 days ago, such as `npm update --before=2026-10-25`. The date gives the
+same 7-day wait as Dependabot's cooldown. Run it in the root and in
+`fixtures/npm`. The pnpm fixture needs no refresh: its only indirect dependency
+comes with `@types/node`, which Dependabot updates. Then run `npm run all` and
+open a pull request of its own. The changes to `dist/licenses.md` show which
+bundled packages changed.
+
 Third-party actions added to a workflow must also be added to the repository's
 allowed actions.
 

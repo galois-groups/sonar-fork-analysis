@@ -197,7 +197,9 @@ each analyzer only on those files. So the action asks the server which languages
 it knows. For each language that isn't tested, it sets
 `sonar.lang.patterns.<language>` to a pattern no file can match. Files of those
 languages are still indexed, but without a language. Their analyzers never load
-in the job that has the token.
+in the job that has the token. `sonar.lang.patterns.<language>` replaces the
+language's own file suffixes and patterns. So the build can still carry those,
+but they can't turn a language back on.
 
 Without the server's list, the action can't know which languages to turn off. So
 if it can't get the list, it stops without analysing. All this relies on how the
@@ -254,9 +256,8 @@ Everything else stays behind:
 - the server, the token, the project key and the organization;
 - scanner and branch settings;
 - anything that would start a program, like a JDBC driver or Node.js;
-- the settings that decide each file's language: file suffixes and patterns, and
-  `sonar.lang.patterns.*`. The Sonar workflow sets its own, see
-  [the analyzers](#the-analyzers).
+- `sonar.lang.patterns.*`, which turns languages on and off. The Sonar workflow
+  sets its own, see [the analyzers](#the-analyzers).
 
 Reports are recognised by their name (`…reportPaths` and similar), so a report
 from a tool Sonar adds later works without a new release of this action. The

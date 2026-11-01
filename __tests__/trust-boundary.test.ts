@@ -256,9 +256,7 @@ describe('resolveSettings on any settings', () => {
           for (const prefix of ['', 'm.', 'n.'])
             expect(properties.has(prefix + forbiddenKey)).toBe(false)
         for (const key of properties.keys())
-          expect(key).not.toMatch(
-            /\.file\.(?:suffixes|patterns)$|(?:^|\.)sonar\.lang\.patterns\./
-          )
+          expect(key).not.toMatch(/(?:^|\.)sonar\.lang\.patterns\./)
       }),
       { numRuns: 1000 }
     )

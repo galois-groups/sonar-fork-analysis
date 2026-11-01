@@ -108,10 +108,8 @@ jobs:
             galois-groups_sonar-fork-analysis_${{ matrix.fixture }}_split
           sonar-organization: galois-groups
           sonar-token: ${{ secrets.SONAR_TOKEN }}
-          # COBOL has no default file suffixes. The fork path never carries them from the build.
-          build-arguments: |
+          build-arguments:
             -Dsonar.projectName=Sonar fork analysis - ${{ matrix.name }} split
-            ${{ matrix.fixture == 'infra' && '-Dsonar.cobol.file.suffixes=cbl,cpy' || '' }}
 
       - name: 'Stop recording'
         id: stop

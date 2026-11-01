@@ -28,7 +28,7 @@ const settings = new Map([
   ['sonar.region', 'us'],
   ['sonar.gradle.scanAll', 'true'],
   ['org.acme:parent-tests.sonar.sca.enabled', 'true'],
-  ['org.acme:parent-tests.sonar.python.file.suffixes', '.java'],
+  ['org.acme:parent-tests.sonar.lang.patterns.py', '**/*.java'],
   ['env.GITHUB_TOKEN', 'ghs_secret'],
   ['java.home', '/usr/lib/jvm']
 ])
@@ -194,7 +194,10 @@ describe('isAllowed', () => {
     'sonar.cobol.compilationConstants.1.value',
     'sonar.pli.includeDdname.SYSLIB.path',
     'sonar.pli.includeDdname.SYSLIB.suffix',
-    'sonar.rpg.leftMarginWidth'
+    'sonar.rpg.leftMarginWidth',
+    'sonar.docker.file.patterns',
+    'sonar.python.file.suffixes',
+    'sonar.cobol.file.suffixes'
   ])('allows %s', (key) => {
     expect(isAllowed(key)).toBe(true)
   })
@@ -209,10 +212,7 @@ describe('isAllowed', () => {
     'sonar.cfamily.compile-commands',
     'sonar.rust.cargo.manifestPaths',
     'sonar.javascript.node.maxspace',
-    // They decide each file's language. That decides which analyzers load.
-    'sonar.docker.file.patterns',
-    'sonar.python.file.suffixes',
-    'sonar.cobol.file.suffixes',
+    // It would replace the pattern that turns an untested language off.
     'sonar.lang.patterns.java',
     // A DD name with a dot is not one the path checks recognise.
     'sonar.pli.includeDdname.a.b.path',
@@ -258,7 +258,7 @@ describe('filterSettings', () => {
       'sonar.nodejs.executable',
       'sonar.region',
       'org.acme:parent-tests.sonar.sca.enabled',
-      'org.acme:parent-tests.sonar.python.file.suffixes'
+      'org.acme:parent-tests.sonar.lang.patterns.py'
     ])
   })
 

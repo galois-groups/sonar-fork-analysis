@@ -17928,8 +17928,24 @@ var RUNNER_FILES = /* @__PURE__ */ new Set([
 function toolEnvironment() {
 	return Object.fromEntries(Object.entries(jobEnvironment()).filter(([name]) => !name.startsWith("ACTIONS_") && !RUNNER_FILES.has(name)));
 }
+// src/secrets.ts
+var secrets = /* @__PURE__ */ new Set();
+function secret(value) {
+	if (!value) return;
+	secrets.add(value);
+	setSecret(value);
+}
+function redacted(text) {
+	let out = text;
+	for (const value of [...secrets].sort((a, b) => b.length - a.length)) out = out.replaceAll(value, "***");
+	return out;
+}
+function forgetSecrets() {
+	secrets.clear();
+}
 // src/warnings.ts
 var count = 0;
+var leftOut = [];
 function warn(message) {
 	count++;
 	warning(message);
@@ -17939,6 +17955,7 @@ function warningCount() {
 }
 function resetWarnings() {
 	count = 0;
+	leftOut = [];
 }
 var NOUNS = {
 	setting: ["setting", "settings"],
@@ -17962,6 +17979,10 @@ function warnLeftOut(items, warning) {
 	for (const item of items) info(item.text);
 	info(`::${resume}::`);
 	warn(warning(counted(items)));
+	for (const item of items) leftOut.push(item);
+}
+function warnedLeftOut() {
+	return [...leftOut];
 }
 // src/checkout.ts
 var QUIET_GIT = {
@@ -17989,7 +18010,7 @@ async function checkoutCommit(workspace, { serverUrl, repository, sha, token }) 
 	const env = {};
 	if (token) {
 		const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
-		setSecret(basic);
+		secret(basic);
 		Object.assign(env, {
 			GIT_CONFIG_COUNT: "1",
 			GIT_CONFIG_KEY_0: `http.${serverUrl}/.extraheader`,
@@ -18229,6 +18250,6 @@ function readNote(saved) {
 		return;
 	}
 }
-export { which as A, __toCommonJS as B, notice as C, exec as D, warning as E, require_tunnel as F, __commonJSMin as I, __esmMin as L, HttpClient as M, HttpCodes as N, mkdirP as O, require_undici as P, __exportAll as R, isDebug as S, setSecret as T, __toESM as V, debug as _, cleanUpCheckout as a, getMultilineInput as b, resetWarnings as c, warningCount as d, jobEnvironment as f, retry as g, realPath as h, trackedReporter as i, BearerCredentialHandler as j, rmRF as k, warn as l, realLocation as m, reportInterrupted as n, prepareCheckout as o, toolEnvironment as p, runStatusTarget as r, verifyCheckout as s, noReporter as t, warnLeftOut as u, error as v, setFailed as w, info as x, getInput as y, __require as z };
+export { warning as A, __commonJSMin as B, getInput as C, notice as D, isDebug as E, BearerCredentialHandler as F, __toESM as G, __exportAll as H, HttpClient as I, HttpCodes as L, mkdirP as M, rmRF as N, setFailed as O, which as P, require_undici as R, error as S, info as T, __require as U, __esmMin as V, __toCommonJS as W, toolEnvironment as _, cleanUpCheckout as a, retry as b, resetWarnings as c, warnedLeftOut as d, warningCount as f, jobEnvironment as g, secret as h, trackedReporter as i, exec as j, setSecret as k, warn as l, redacted as m, reportInterrupted as n, prepareCheckout as o, forgetSecrets as p, runStatusTarget as r, verifyCheckout as s, noReporter as t, warnLeftOut as u, realLocation as v, getMultilineInput as w, debug as x, realPath as y, require_tunnel as z };
 
 //# sourceMappingURL=shared.js.map

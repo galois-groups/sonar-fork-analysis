@@ -1,4 +1,4 @@
-import { A as which, B as __toCommonJS, C as notice, D as exec, E as warning, F as require_tunnel, I as __commonJSMin, L as __esmMin, M as HttpClient, N as HttpCodes, O as mkdirP, P as require_undici, R as __exportAll, S as isDebug, T as setSecret, V as __toESM, _ as debug, b as getMultilineInput, c as resetWarnings, d as warningCount, f as jobEnvironment, g as retry$2, h as realPath, i as trackedReporter, j as BearerCredentialHandler, k as rmRF, l as warn, m as realLocation, o as prepareCheckout, p as toolEnvironment, r as runStatusTarget, s as verifyCheckout, t as noReporter, u as warnLeftOut, v as error, w as setFailed, x as info, y as getInput, z as __require } from "./shared.js";
+import { A as warning, B as __commonJSMin, C as getInput, D as notice, E as isDebug, F as BearerCredentialHandler, G as __toESM, H as __exportAll, I as HttpClient, L as HttpCodes, M as mkdirP, N as rmRF, O as setFailed, P as which, R as require_undici, S as error, T as info, U as __require, V as __esmMin, W as __toCommonJS, _ as toolEnvironment, b as retry$2, c as resetWarnings, d as warnedLeftOut, f as warningCount, g as jobEnvironment, h as secret, i as trackedReporter, j as exec, k as setSecret, l as warn, m as redacted, o as prepareCheckout, p as forgetSecrets, r as runStatusTarget, s as verifyCheckout, t as noReporter, u as warnLeftOut, v as realLocation, w as getMultilineInput, x as debug, y as realPath, z as require_tunnel } from "./shared.js";
 import os, { EOL } from "os";
 import * as crypto$3 from "crypto";
 import * as fs$2 from "fs";
@@ -24,6 +24,7 @@ import { Buffer as Buffer$1 } from "buffer";
 import fs, { accessSync, appendFileSync, constants as constants$1, copyFileSync, cpSync, existsSync as existsSync$1, globSync, lstatSync, mkdirSync, mkdtempSync, readFileSync as readFileSync$1, readdirSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import fs$1, { realpath } from "fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve as resolve$1, sep } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { createRequire } from "module";
 // node_modules/@actions/artifact/lib/internal/shared/config.js
 function getUploadChunkSize() {
@@ -103992,6 +103993,18 @@ function analyzeSummary(facts) {
 	const left = facts.leftOut.length > 0 ? `\n\nLeft out of the analysis:\n\n${table(leftOutRows(facts.leftOut))}` : "";
 	return `### ✅ Sonar analysis${what}\n\nAnalysed commit ${code(facts.commit.slice(0, 7))}${onBranch} of ${code(facts.repository)} with the scanner CLI ${escaped(facts.scannerVersion)}.${link(facts.report)}\n\nTurned off: dependency analysis and build-system autoconfiguration.${untested}${on}${left}${warned(facts.warnings)}`;
 }
+var pre = (text) => `<pre>${escaped(text)}</pre>`;
+var MESSAGE = 2e3;
+function shortened(text) {
+	return text.length > MESSAGE ? `${text.slice(0, MESSAGE)}…` : text;
+}
+function failedSummary(facts) {
+	const message = shortened(redacted(facts.message));
+	let what = pre(message);
+	if (facts.output) what = facts.output.length > 0 ? `${escaped(message)}:\n\n${pre(redacted(facts.output.join("\n")))}` : `${escaped(message)}.`;
+	const left = facts.leftOut.length > 0 ? `\n\nLeft out of the analysis:\n\n${table(leftOutRows(facts.leftOut))}` : "";
+	return `### ❌ Sonar analysis failed\n\n${what}\n\nThe log has the details.${left}${warned(facts.warnings)}`;
+}
 function reason(words, ...values) {
 	let text = words[0] ?? "";
 	let markdown = text;
@@ -104195,6 +104208,81 @@ function snapshotReports(directory, reports = /* @__PURE__ */ new Map()) {
 function findNewReport(directory, before) {
 	for (const [path, content] of snapshotReports(directory)) if (before.get(path) !== content) return path;
 }
+// src/tool-errors.ts
+var LINES = 20;
+var WIDTH = 300;
+var KEPT = 1e3;
+var ErrorLines = class {
+	tool;
+	kept = [];
+	streams = [];
+	stdout = this.listener();
+	stderr = this.listener();
+	constructor(tool) {
+		this.tool = tool;
+	}
+	end() {
+		for (const stream of this.streams) {
+			const last = (stream.rest + stream.decoder.end()).slice(0, KEPT);
+			stream.rest = "";
+			this.add(last, stream);
+		}
+		return [...this.kept];
+	}
+	listener() {
+		const stream = {
+			decoder: new StringDecoder("utf8"),
+			rest: "",
+			inside: false
+		};
+		this.streams.push(stream);
+		return (data) => {
+			const parts = stream.decoder.write(data).split("\n");
+			const last = parts.pop() ?? "";
+			for (const part of parts) {
+				this.add(stream.rest + part.slice(0, KEPT), stream);
+				stream.rest = "";
+			}
+			stream.rest = (stream.rest + last).slice(0, KEPT);
+		};
+	}
+	add(line, stream) {
+		const plain = line.trimEnd();
+		if (plain === "" || !this.wanted(plain, stream)) return;
+		const whole = redacted(plain);
+		const cut = whole.length > WIDTH ? `${whole.slice(0, WIDTH)}…` : whole;
+		if (this.tool === "maven" || this.tool === "gradle") {
+			if (this.kept.length < LINES) this.kept.push(cut);
+		} else {
+			this.kept.push(cut);
+			if (this.kept.length > LINES) this.kept.shift();
+		}
+	}
+	wanted(line, stream) {
+		switch (this.tool) {
+			case "maven":
+				if (line.startsWith("[ERROR] Failed to execute goal ")) stream.inside = true;
+				if (!line.startsWith("[ERROR] ") || line.startsWith("[ERROR] -> ")) stream.inside = false;
+				return stream.inside;
+			case "gradle":
+				if (line === "* What went wrong:") {
+					stream.inside = true;
+					return false;
+				}
+				if (line.startsWith("* ")) stream.inside = false;
+				return stream.inside;
+			case "scanner": return /^\d{2}:\d{2}:\d{2}\.\d{3} ERROR /.test(line);
+			case "npm": return line.startsWith("[ERROR] ");
+		}
+	}
+};
+var ToolFailure = class extends Error {
+	lines;
+	constructor(message, lines) {
+		super(message);
+		this.lines = lines;
+	}
+};
 // src/main.ts
 async function direct(inputs) {
 	if (!inputs.projectKey) throw new Error("Input required: project-key");
@@ -104209,13 +104297,20 @@ async function direct(inputs) {
 	};
 	const reportsBefore = snapshotReports(workingDirectory);
 	let errorOutput = "";
+	const errors = new ErrorLines(tool.name);
 	const exitCode = await exec(await executable(tool, inputs.scannerVersion), args, {
 		cwd: workingDirectory,
 		env,
 		ignoreReturnCode: true,
-		listeners: { stderr: (data) => errorOutput += data.toString() }
+		listeners: {
+			stdout: errors.stdout,
+			stderr: (data) => {
+				errorOutput += data.toString();
+				errors.stderr(data);
+			}
+		}
 	});
-	if (exitCode !== 0) throw new Error(buildFailure(tool, exitCode, errorOutput));
+	if (exitCode !== 0) throw new ToolFailure(buildFailure(tool, exitCode, errorOutput), errors.end());
 	const report = findNewReport(workingDirectory, reportsBefore);
 	if (!report) throw new Error(missingAnalysis(tool));
 	await leaveDirectNote(inputs.projectKey);
@@ -104303,16 +104398,23 @@ async function simulate(tool, workingDirectory, temp, inputs) {
 	const collect = (data) => {
 		errorOutput += data.toString();
 	};
+	const errors = new ErrorLines(tool.name);
 	const exitCode = await exec(await executable(tool, inputs.scannerVersion), args, {
 		cwd: workingDirectory,
 		env,
 		ignoreReturnCode: true,
-		listeners: npm ? {
-			stdout: collect,
-			stderr: collect
-		} : { stderr: collect }
+		listeners: {
+			stdout: (data) => {
+				if (npm) collect(data);
+				errors.stdout(data);
+			},
+			stderr: (data) => {
+				collect(data);
+				errors.stderr(data);
+			}
+		}
 	});
-	if (exitCode !== 0) throw new Error(buildFailure(tool, exitCode, errorOutput));
+	if (exitCode !== 0) throw new ToolFailure(buildFailure(tool, exitCode, errorOutput), errors.end());
 	if (!existsSync$1(dump)) throw new Error(missingDump(tool));
 	const text = readFileSync$1(dump, "utf8");
 	rmSync(dump);
@@ -104498,17 +104600,22 @@ async function analyzeCommit(inputs, context, origin, workspace, found) {
 	const cwd = join(temp, "run");
 	mkdirSync(cwd);
 	info(`::stop-commands::${resume}`);
+	const errors = new ErrorLines("scanner");
 	let exitCode;
 	try {
 		exitCode = await exec(scanner, [`-Dproject.settings=${settingsFile}`, ...inputs.buildArguments], {
 			cwd,
 			env,
-			ignoreReturnCode: true
+			ignoreReturnCode: true,
+			listeners: {
+				stdout: errors.stdout,
+				stderr: errors.stderr
+			}
 		});
 	} finally {
 		info(`::${resume}::`);
 	}
-	if (exitCode !== 0) throw new Error(`The Sonar scanner failed with exit code ${exitCode}`);
+	if (exitCode !== 0) throw new ToolFailure(`The Sonar scanner failed with exit code ${exitCode}`, errors.end());
 	const reportTask = join(temp, "scannerwork", "report-task.txt");
 	writeSummary(() => analyzeSummary({
 		pullRequest: pullRequest?.key,
@@ -104558,14 +104665,23 @@ function workflowRunReporter() {
 async function run() {
 	let report = noReporter;
 	resetWarnings();
+	forgetSecrets();
 	try {
 		report = workflowRunReporter();
 		const inputs = readInputs();
-		if (inputs.token) setSecret(inputs.token);
+		secret(inputs.token);
+		secret(inputs.githubToken);
 		await dispatch(inputs, report);
 	} catch (error) {
 		await report("failure", "The analysis failed, see the run");
-		setFailed(error instanceof Error ? error.message : String(error));
+		const message = error instanceof Error ? error.message : String(error);
+		setFailed(message);
+		writeSummary(() => failedSummary({
+			message,
+			output: error instanceof ToolFailure ? error.lines : void 0,
+			leftOut: warnedLeftOut(),
+			warnings: warningCount()
+		}));
 	}
 }
 // src/index.ts

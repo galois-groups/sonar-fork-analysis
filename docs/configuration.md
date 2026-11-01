@@ -102,8 +102,7 @@ them.
 
 ## The job summary
 
-Each run that doesn't fail also writes a short summary on the run's summary
-page:
+Each run also writes a short summary on the run's summary page:
 
 - A direct analysis shows the project, the build and a link to the analysis.
 - The build of a pull request from a fork lists what it ships to the Sonar
@@ -112,14 +111,19 @@ page:
 - The Sonar workflow shows the pull request, the commit and the fork it
   analysed, a link to the analysis, what stays off and anything it left out.
 - A run with nothing to analyse says why.
+- A failed run shows what went wrong. If the build or the scanner failed, the
+  summary adds the lines of its output that say why. If the fork path left
+  anything out before the failure, the summary lists that too. The log has the
+  whole output.
 
-Branch names, repository names and settings can come from a fork, so the summary
-shows them as plain text, never as links or formatting. The warnings stay
-annotations on the same page, so the summary only counts them. What the fork
-path left out is the exception. One warning counts it and the summary lists each
-item. GitHub shows at most 10 warnings as annotations. With more, the summary
-points to the log instead. GitHub also drops a summary larger than 1 MiB, so a
-long list stops after about 10,000 characters. The log has every item.
+Branch names, repository names, settings and errors can come from a fork, so the
+summary shows them as plain text, never as links or formatting. It also takes
+the tokens out of the errors it shows. The warnings stay annotations on the same
+page, so the summary only counts them. What the fork path left out is the
+exception. One warning counts it and the summary lists each item. GitHub shows
+at most 10 warnings as annotations. With more, the summary points to the log
+instead. GitHub also drops a summary larger than 1 MiB, so a long list stops
+after about 10,000 characters. The log has every item.
 
 ## Languages on pull requests from forks
 

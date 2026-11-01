@@ -69,6 +69,7 @@ import {
 import { parseNpmDump, parseProperties } from './properties.js'
 import { findNewReport, snapshotReports } from './report.js'
 import { installScanner } from './scanner.js'
+import { forgetSecrets, secret } from './secrets.js'
 import {
   noReporter,
   runStatusTarget,
@@ -79,13 +80,21 @@ import { filterSettings, moduleTree } from './settings.js'
 import {
   analyzeSummary,
   directSummary,
+  failedSummary,
   prepareSummary,
   readReport,
   reason,
   skippedSummary,
   writeSummary
 } from './summary.js'
-import { resetWarnings, warn, warnLeftOut, warningCount } from './warnings.js'
+import { ErrorLines, ToolFailure } from './tool-errors.js'
+import {
+  resetWarnings,
+  warn,
+  warnLeftOut,
+  warnedLeftOut,
+  warningCount
+} from './warnings.js'
 
 async function direct(inputs: Inputs): Promise<void> {
   if (!inputs.projectKey) throw new Error('Input required: project-key')
@@ -104,6 +113,7 @@ async function direct(inputs: Inputs): Promise<void> {
   const env = { ...jobEnvironment(), SONAR_TOKEN: inputs.token }
   const reportsBefore = snapshotReports(workingDirectory)
   let errorOutput = ''
+  const errors = new ErrorLines(tool.name)
   const exitCode = await exec(
     await executable(tool, inputs.scannerVersion),
     args,
@@ -111,10 +121,20 @@ async function direct(inputs: Inputs): Promise<void> {
       cwd: workingDirectory,
       env,
       ignoreReturnCode: true,
-      listeners: { stderr: (data) => (errorOutput += data.toString()) }
+      listeners: {
+        stdout: errors.stdout,
+        stderr: (data) => {
+          errorOutput += data.toString()
+          errors.stderr(data)
+        }
+      }
     }
   )
-  if (exitCode !== 0) throw new Error(buildFailure(tool, exitCode, errorOutput))
+  if (exitCode !== 0)
+    throw new ToolFailure(
+      buildFailure(tool, exitCode, errorOutput),
+      errors.end()
+    )
   // Sanity check against misconfiguration, e.g. Gradle running another task matching 'sonar'. Not a
   // guarantee: the build can write any report it likes.
   const report = findNewReport(workingDirectory, reportsBefore)
@@ -286,6 +306,7 @@ async function simulate(
   const collect = (data: Buffer): void => {
     errorOutput += data.toString()
   }
+  const errors = new ErrorLines(tool.name)
   const exitCode = await exec(
     await executable(tool, inputs.scannerVersion),
     args,
@@ -293,13 +314,24 @@ async function simulate(
       cwd: workingDirectory,
       env,
       ignoreReturnCode: true,
-      // The npm scanner prints its errors to standard output.
-      listeners: npm
-        ? { stdout: collect, stderr: collect }
-        : { stderr: collect }
+      listeners: {
+        stdout: (data) => {
+          // The npm scanner prints its errors to standard output.
+          if (npm) collect(data)
+          errors.stdout(data)
+        },
+        stderr: (data) => {
+          collect(data)
+          errors.stderr(data)
+        }
+      }
     }
   )
-  if (exitCode !== 0) throw new Error(buildFailure(tool, exitCode, errorOutput))
+  if (exitCode !== 0)
+    throw new ToolFailure(
+      buildFailure(tool, exitCode, errorOutput),
+      errors.end()
+    )
   if (!existsSync(dump)) throw new Error(missingDump(tool))
 
   // The dump holds the build's whole environment, so it never leaves this machine.
@@ -634,6 +666,7 @@ async function analyzeCommit(
   const cwd = join(temp, 'run')
   mkdirSync(cwd)
   core.info(`::stop-commands::${resume}`)
+  const errors = new ErrorLines('scanner')
   let exitCode: number
   try {
     exitCode = await exec(
@@ -642,14 +675,18 @@ async function analyzeCommit(
       {
         cwd,
         env,
-        ignoreReturnCode: true
+        ignoreReturnCode: true,
+        listeners: { stdout: errors.stdout, stderr: errors.stderr }
       }
     )
   } finally {
     core.info(`::${resume}::`)
   }
   if (exitCode !== 0)
-    throw new Error(`The Sonar scanner failed with exit code ${exitCode}`)
+    throw new ToolFailure(
+      `The Sonar scanner failed with exit code ${exitCode}`,
+      errors.end()
+    )
   const reportTask = join(temp, 'scannerwork', 'report-task.txt')
   writeSummary(() =>
     analyzeSummary({
@@ -748,14 +785,25 @@ function workflowRunReporter(): Reporter {
 export async function run(): Promise<void> {
   let report: Reporter = noReporter
   resetWarnings()
+  forgetSecrets()
   try {
     report = workflowRunReporter()
     const inputs = readInputs()
-    if (inputs.token) core.setSecret(inputs.token)
+    secret(inputs.token)
+    secret(inputs.githubToken)
     await dispatch(inputs, report)
   } catch (error) {
     // Not the message: it may quote the artifact, i.e. words of the fork's choosing. The run has it.
     await report('failure', 'The analysis failed, see the run')
-    core.setFailed(error instanceof Error ? error.message : String(error))
+    const message = error instanceof Error ? error.message : String(error)
+    core.setFailed(message)
+    writeSummary(() =>
+      failedSummary({
+        message,
+        output: error instanceof ToolFailure ? error.lines : undefined,
+        leftOut: warnedLeftOut(),
+        warnings: warningCount()
+      })
+    )
   }
 }

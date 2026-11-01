@@ -2,8 +2,14 @@ import { describe, it, expect, vi } from 'vitest'
 import * as core from '../__fixtures__/core.js'
 
 vi.doMock('@actions/core', () => core)
-const { counted, resetWarnings, warn, warnLeftOut, warningCount } =
-  await import('../src/warnings.js')
+const {
+  counted,
+  resetWarnings,
+  warn,
+  warnLeftOut,
+  warnedLeftOut,
+  warningCount
+} = await import('../src/warnings.js')
 
 describe('warn', () => {
   it('counts every warning until the run starts again', () => {
@@ -59,6 +65,20 @@ describe('warnLeftOut', () => {
     ])
     expect(core.warning.mock.calls).toEqual([['Left out 2 files.']])
     expect(warningCount()).toBe(1)
+  })
+
+  it('keeps what it reported for the summary, however much', () => {
+    resetWarnings()
+    const items = Array.from({ length: 200_000 }, (_, i) => ({
+      kind: 'link' as const,
+      names: [String(i)],
+      text: ''
+    }))
+    warnLeftOut(items, (counts) => counts)
+    warnLeftOut(items.slice(0, 1), (counts) => counts)
+    expect(warnedLeftOut()).toHaveLength(200_001)
+    resetWarnings()
+    expect(warnedLeftOut()).toEqual([])
   })
 
   it('says nothing when nothing was left out', () => {

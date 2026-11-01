@@ -11,12 +11,14 @@ const {
   analyzeSummary,
   directSummary,
   escaped,
+  failedSummary,
   prepareSummary,
   readReport,
   reason,
   skippedSummary,
   writeSummary
 } = await import('../src/summary.js')
+const { forgetSecrets, secret } = await import('../src/secrets.js')
 
 const SONARCLOUD = {
   serverUrl: 'https://sonarcloud.io',
@@ -425,6 +427,91 @@ describe('skippedSummary', () => {
     expect(skippedSummary(reason`Nothing to analyse.`)).toBe(
       '### ⏭️ No Sonar analysis\n\nNothing to analyse.'
     )
+  })
+})
+
+describe('failedSummary', () => {
+  const facts = {
+    message: 'Input required: project-key',
+    leftOut: [],
+    warnings: 0
+  }
+
+  beforeEach(() => {
+    forgetSecrets()
+  })
+
+  it('shows the error as text and sends to the log', () => {
+    expect(failedSummary(facts)).toBe(
+      '### ❌ Sonar analysis failed\n\n<pre>Input required&#58; project&#45;key</pre>\n\nThe log has the details.'
+    )
+  })
+
+  it("introduces a tool's errors with its failure, then what it left out and the warnings", () => {
+    const summary = failedSummary({
+      message: 'The Sonar scanner failed with exit code 3',
+      output: ['10:00:00.000 ERROR one', '10:00:01.000 ERROR <b>two</b>'],
+      leftOut: [{ kind: 'file', names: ['src/Evil.java'], text: '' }],
+      warnings: 1
+    })
+    expect(summary).toBe(
+      [
+        '### ❌ Sonar analysis failed',
+        '',
+        'The Sonar scanner failed with exit code 3:',
+        '',
+        `<pre>${escaped('10:00:00.000 ERROR one\n10:00:01.000 ERROR <b>two</b>')}</pre>`,
+        '',
+        'The log has the details.',
+        '',
+        'Left out of the analysis:',
+        '',
+        '| | |',
+        '|---|---|',
+        '| Files | <code>src&#47;Evil&#46;java</code> |',
+        '',
+        '1 warning: see the annotations.'
+      ].join('\n')
+    )
+  })
+
+  it('ends the sentence of a tool that printed no errors it knows', () => {
+    expect(
+      failedSummary({
+        ...facts,
+        message: 'The Maven build failed with exit code 1',
+        output: []
+      })
+    ).toBe(
+      '### ❌ Sonar analysis failed\n\nThe Maven build failed with exit code 1.\n\nThe log has the details.'
+    )
+  })
+
+  it('keeps a message that quotes the artifact as text', () => {
+    expect(
+      failedSummary({ ...facts, message: '</pre>[x](https://evil.example)' })
+    ).toContain(`<pre>${escaped('</pre>[x](https://evil.example)')}</pre>`)
+  })
+
+  it('cuts a long message after taking the secrets out', () => {
+    secret('sqa_token')
+    const summary = failedSummary({
+      ...facts,
+      message: `${'x'.repeat(1_995)}sqa_token${'y'.repeat(100)}`
+    })
+    expect(summary).toContain(
+      `<pre>${'x'.repeat(1_995)}&#42;&#42;&#42;yy&#8230;</pre>`
+    )
+    expect(
+      failedSummary({
+        ...facts,
+        message: 'x sqa_token',
+        output: ['[ERROR] sqa_token']
+      })
+    ).toBe(
+      '### ❌ Sonar analysis failed\n\nx &#42;&#42;&#42;:\n\n<pre>&#91;ERROR&#93; &#42;&#42;&#42;</pre>\n\nThe log has the details.'
+    )
+    expect(summary).not.toContain('sqa')
   })
 })
 

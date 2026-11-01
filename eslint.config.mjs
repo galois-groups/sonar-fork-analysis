@@ -10,6 +10,11 @@ import regexp from 'eslint-plugin-regexp'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
+const BANNED = {
+  warning: 'Use warn() from warnings.ts: the job summary counts it.',
+  setSecret: 'Use secret() from secrets.ts: the job summary takes it out.'
+}
+
 export default defineConfig(
   { ignores: ['coverage', 'dist', 'fixtures'] },
   js.configs.recommended,
@@ -84,20 +89,25 @@ export default defineConfig(
       'n/no-unsupported-features/node-builtins': 'error'
     }
   },
-  {
-    files: ['src/**'],
-    ignores: ['src/warnings.ts'],
+  // A later block's options for a rule replace the earlier ones, so each file the bans allow gets the
+  // other one again.
+  ...Object.entries({
+    'src/**': ['warning', 'setSecret'],
+    'src/warnings.ts': ['setSecret'],
+    'src/secrets.ts': ['warning']
+  }).map(([files, properties]) => ({
+    files: [files],
     rules: {
       'no-restricted-properties': [
         'error',
-        {
+        ...properties.map((property) => ({
           object: 'core',
-          property: 'warning',
-          message: 'Use warn() from warnings.ts: the job summary counts it.'
-        }
+          property,
+          message: BANNED[property]
+        }))
       ]
     }
-  },
+  })),
   {
     files: ['__tests__/**', '__fixtures__/**'],
     extends: [vitest.configs.recommended],

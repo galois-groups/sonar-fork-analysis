@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 import { toolEnvironment } from './environment.js'
 import { realPath } from './real-path.js'
 import { retry } from './retry.js'
+import { secret } from './secrets.js'
 import { warn } from './warnings.js'
 
 // Never wait for a password, and never let the checkout's attributes send git-lfs to a server.
@@ -54,7 +55,7 @@ export async function checkoutCommit(
   const env: Record<string, string> = {}
   if (token) {
     const basic = Buffer.from(`x-access-token:${token}`).toString('base64')
-    core.setSecret(basic)
+    secret(basic)
     Object.assign(env, {
       GIT_CONFIG_COUNT: '1',
       GIT_CONFIG_KEY_0: `http.${serverUrl}/.extraheader`,

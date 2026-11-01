@@ -1,6 +1,7 @@
 // One job summary per run, as Markdown for the run's summary page. Names, paths and messages may come
 // from a fork's build, its artifact or its pull request: they reach the summary only through escaped().
 import { appendFileSync } from 'node:fs'
+import { redacted } from './secrets.js'
 import { warn, type LeftOut } from './warnings.js'
 
 // Every other character becomes a character reference, which Markdown and HTML both show as itself:
@@ -211,6 +212,37 @@ export function analyzeSummary(facts: {
       ? `\n\nLeft out of the analysis:\n\n${table(leftOutRows(facts.leftOut))}`
       : ''
   return `### ✅ Sonar analysis${what}\n\nAnalysed commit ${code(facts.commit.slice(0, 7))}${onBranch} of ${code(facts.repository)} with the scanner CLI ${escaped(facts.scannerVersion)}.${link(facts.report)}\n\nTurned off: dependency analysis and build-system autoconfiguration.${untested}${on}${left}${warned(facts.warnings)}`
+}
+
+// <pre> keeps the lines, and nothing in it links.
+const pre = (text: string): string => `<pre>${escaped(text)}</pre>`
+
+// The log has the whole message: one can quote a whole command's output.
+const MESSAGE = 2_000
+
+function shortened(text: string): string {
+  return text.length > MESSAGE ? `${text.slice(0, MESSAGE)}…` : text
+}
+
+export function failedSummary(facts: {
+  message: string
+  // Only when a tool failed: the message is then the action's own words, which introduce the tool's.
+  output?: string[] | undefined
+  leftOut: LeftOut[]
+  warnings: number
+}): string {
+  const message = shortened(redacted(facts.message))
+  let what = pre(message)
+  if (facts.output)
+    what =
+      facts.output.length > 0
+        ? `${escaped(message)}:\n\n${pre(redacted(facts.output.join('\n')))}`
+        : `${escaped(message)}.`
+  const left =
+    facts.leftOut.length > 0
+      ? `\n\nLeft out of the analysis:\n\n${table(leftOutRows(facts.leftOut))}`
+      : ''
+  return `### ❌ Sonar analysis failed\n\n${what}\n\nThe log has the details.${left}${warned(facts.warnings)}`
 }
 
 export type Reason = { text: string; markdown: string }

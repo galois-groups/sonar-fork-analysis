@@ -24,6 +24,7 @@ const {
   sameRepository,
   verifyCheckout
 } = await import('../src/checkout.js')
+const { redacted } = await import('../src/secrets.js')
 
 let root: string
 let server: string
@@ -94,6 +95,10 @@ describe('checkoutCommit', () => {
 
     expect(git(workspace, 'rev-parse', 'HEAD')).toBe(first)
     expect(git(workspace, 'rev-parse', '--is-shallow-repository')).toBe('false')
+    // The header git sends, which a failure's summary must not show either.
+    const header = Buffer.from('x-access-token:a-token').toString('base64')
+    expect(core.setSecret).toHaveBeenCalledWith(header)
+    expect(redacted(`basic ${header}`)).toBe('basic ***')
     await expect(
       verifyCheckout(workspace, first, origin(), false)
     ).resolves.toBeUndefined()

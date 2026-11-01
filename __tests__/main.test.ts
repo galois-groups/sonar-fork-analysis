@@ -46,6 +46,7 @@ vi.doMock('../src/languages.js', async (importOriginal) => ({
 }))
 
 const { run } = await import('../src/main.js')
+const { escaped } = await import('../src/summary.js')
 const { DEFAULT_VERSION } = await import('../src/scanner.js')
 
 const TOKEN = 'sqa_not_a_real_token'
@@ -309,6 +310,48 @@ describe('run', () => {
     )
   })
 
+  it('writes why the build failed to the job summary', async () => {
+    process.env.GITHUB_STEP_SUMMARY = join(project, 'summary.md')
+    exec.mockImplementation(async (_tool, _args, options) => {
+      options!.listeners!.stdout!(
+        Buffer.from(
+          [
+            '[ERROR] BUILD FAILURE',
+            '[ERROR] Failed to execute goal compiler:compile on project x: Compilation failure',
+            '[ERROR] -> [Help 1]'
+          ].join('\n')
+        )
+      )
+      return 1
+    })
+
+    await run()
+
+    expect(summary()).toBe(
+      `### ❌ Sonar analysis failed\n\nThe Maven build failed with exit code 1:\n\n<pre>${escaped('[ERROR] Failed to execute goal compiler:compile on project x: Compilation failure')}</pre>\n\nThe log has the details.\n`
+    )
+  })
+
+  it('writes what went wrong in a direct Gradle build to the job summary', async () => {
+    process.env.GITHUB_STEP_SUMMARY = join(project, 'summary.md')
+    rmSync(join(project, 'pom.xml'))
+    writeFileSync(join(project, 'settings.gradle.kts'), '')
+    exec.mockImplementation(async (_tool, _args, options) => {
+      options!.listeners!.stderr!(
+        Buffer.from(
+          "* What went wrong:\nExecution failed for task ':test'.\n* Try:\n"
+        )
+      )
+      return 1
+    })
+
+    await run()
+
+    expect(summary()).toContain(
+      `<pre>${escaped("Execution failed for task ':test'.")}</pre>`
+    )
+  })
+
   it('explains a Gradle build without the Sonar plugin', async () => {
     rmSync(join(project, 'pom.xml'))
     writeFileSync(join(project, 'settings.gradle.kts'), '')
@@ -482,6 +525,46 @@ describe('run in prepare mode', () => {
 
   afterEach(() => {
     process.env = { ...saved }
+  })
+
+  it('writes what went wrong in the Gradle build to the job summary', async () => {
+    process.env.GITHUB_STEP_SUMMARY = join(project, 'summary.md')
+    rmSync(join(project, 'pom.xml'))
+    writeFileSync(join(project, 'settings.gradle.kts'), '')
+    exec.mockImplementation(async (_tool, _args, options) => {
+      options!.listeners!.stdout!(Buffer.from('> Task :compileJava FAILED\n'))
+      options!.listeners!.stderr!(
+        Buffer.from(
+          "FAILURE: Build failed with an exception.\r\n\r\n* What went wrong:\r\nExecution failed for task ':compileJava'.\r\n\r\n* Try:\r\n"
+        )
+      )
+      return 1
+    })
+
+    await run()
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      'The Gradle build failed with exit code 1'
+    )
+    expect(summary()).toBe(
+      `### ❌ Sonar analysis failed\n\nThe Gradle build failed with exit code 1:\n\n<pre>${escaped("Execution failed for task ':compileJava'.")}</pre>\n\nThe log has the details.\n`
+    )
+  })
+
+  it('writes why the Maven build failed to the job summary', async () => {
+    process.env.GITHUB_STEP_SUMMARY = join(project, 'summary.md')
+    exec.mockImplementation(async (_tool, _args, options) => {
+      options!.listeners!.stdout!(
+        Buffer.from('[ERROR] Failed to execute goal compiler:compile\n')
+      )
+      return 1
+    })
+
+    await run()
+
+    expect(summary()).toContain(
+      `The Maven build failed with exit code 1:\n\n<pre>${escaped('[ERROR] Failed to execute goal compiler:compile')}</pre>`
+    )
   })
 
   it('builds without the token and uploads only analysis settings', async () => {
@@ -1061,6 +1144,31 @@ describe('run in analyze mode', () => {
     expect(order(`::${resume}::`)).toBeGreaterThan(
       exec.mock.invocationCallOrder[0]
     )
+  })
+
+  it('writes why the scanner failed and what the analysis left out', async () => {
+    process.env.GITHUB_STEP_SUMMARY = join(project, 'summary.md')
+    inputs['github-token'] = 'gh-token'
+    prepared({ 'sonar.python.file.suffixes': '.java' })
+    exec.mockImplementation(async (_tool, _args, options) => {
+      options!.listeners!.stdout!(
+        Buffer.from(
+          `10:00:00.000 INFO  Indexing\n10:00:01.000 ERROR Not authorised: ${TOKEN} gh-token\n`
+        )
+      )
+      return 3
+    })
+
+    await run()
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      'The Sonar scanner failed with exit code 3'
+    )
+    expect(summary()).toContain(
+      `### ❌ Sonar analysis failed\n\nThe Sonar scanner failed with exit code 3:\n\n<pre>${escaped('10:00:01.000 ERROR Not authorised: *** ***')}</pre>\n\nThe log has the details.\n\nLeft out of the analysis:\n\n| | |\n|---|---|\n| Settings | <code>sonar&#46;python&#46;file&#46;suffixes</code> |`
+    )
+    expect(summary()).toMatch(/\n\n2 warnings: see the annotations\.\n$/)
+    expect(summary()).not.toContain('not&#95;a&#95;real')
   })
 
   it('turns off the analyzers of untested languages unless build-arguments turn one on', async () => {

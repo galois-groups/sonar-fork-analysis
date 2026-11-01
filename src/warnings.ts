@@ -2,6 +2,7 @@ import * as core from '@actions/core'
 import { randomUUID } from 'node:crypto'
 
 let count = 0
+let leftOut: LeftOut[] = []
 
 // Every warning goes through here, so the job summary can count them.
 export function warn(message: string): void {
@@ -16,6 +17,7 @@ export function warningCount(): number {
 // An action runs once per process; the tests run it many times.
 export function resetWarnings(): void {
   count = 0
+  leftOut = []
 }
 
 // Something the analysis or the build left out, as the job summary names it, and the log line
@@ -56,4 +58,11 @@ export function warnLeftOut(
   for (const item of items) core.info(item.text)
   core.info(`::${resume}::`)
   warn(warning(counted(items)))
+  // Not push(...items): a spread of this many arguments overflows the stack.
+  for (const item of items) leftOut.push(item)
+}
+
+// For the summary of a run that fails after the warning.
+export function warnedLeftOut(): LeftOut[] {
+  return [...leftOut]
 }

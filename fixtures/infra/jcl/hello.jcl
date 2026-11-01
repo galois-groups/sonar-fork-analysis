@@ -1,0 +1,7 @@
+//HELLO    JOB (ACCT),'HELLO'
+//EMPTY    PROC
+//         PEND
+//STEP1    EXEC PGM=IEFBR14
+//SYSIN    DD DATA
+NAME=WORLD
+/*

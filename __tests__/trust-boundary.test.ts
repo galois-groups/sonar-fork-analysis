@@ -145,7 +145,9 @@ describe('resolveSettings on any settings', () => {
     'sonar.projectBaseDir',
     'sonar.java.binaries',
     'sonar.coverageReportPaths',
-    'sonar.projectBuildDir'
+    'sonar.projectBuildDir',
+    'sonar.cobol.copy.directories',
+    'sonar.cobol.sql.catalog.csv.path'
   ]
   // What a fork's build must never pass on: the token, where the analysis goes, the scanner's own
   // settings, anything that starts a program.
@@ -173,9 +175,10 @@ describe('resolveSettings on any settings', () => {
       .map(([prefix, text]) => prefix + text),
     settingText.map((text) => `sonar.${text}.exclusions`),
     settingText.map((text) => `sonar.${text}.reportPaths`),
+    settingText.map((text) => `sonar.pli.includeDdname.${text}.path`),
     // What maps files to languages. That decides which analyzers load.
     fc
-      .constantFrom('java', 'py', 'rust', '')
+      .constantFrom('java', 'py', 'rust', 'cobol', '')
       .chain((language) =>
         fc.constantFrom(
           `sonar.${language}.file.suffixes`,

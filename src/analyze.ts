@@ -26,7 +26,7 @@ import type { PullRequest } from './origin.js'
 import { ARTIFACT_FORMAT } from './prepare.js'
 import { realLocation, realPath } from './real-path.js'
 import {
-  CHECKOUT_PATH_KEYS,
+  isCheckoutPath,
   OUTPUT_PATH_KEYS,
   REREAD_PATH,
   WILDCARD,
@@ -157,7 +157,7 @@ export function resolveSettings(
     if (
       !isShippedPath(bareKey) &&
       !OUTPUT_PATH_KEYS.has(bareKey) &&
-      !CHECKOUT_PATH_KEYS.has(bareKey)
+      !isCheckoutPath(bareKey)
     ) {
       properties.set(key, value)
       continue

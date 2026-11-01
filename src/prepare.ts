@@ -13,7 +13,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { BuildTool } from './build-tool.js'
 import { realPath } from './real-path.js'
 import {
-  CHECKOUT_PATH_KEYS,
+  isCheckoutPath,
   OUTPUT_PATH_KEYS,
   WILDCARD,
   byCodeUnit,
@@ -376,7 +376,7 @@ export function stageAnalysis(
     const isShipped = isShippedPath(bareKey)
     if (
       !isShipped &&
-      !CHECKOUT_PATH_KEYS.has(bareKey) &&
+      !isCheckoutPath(bareKey) &&
       !OUTPUT_PATH_KEYS.has(bareKey)
     ) {
       out[key] = value

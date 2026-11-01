@@ -309,7 +309,8 @@ these programs on the `PATH`:
 - the tools of Terraform, Ansible, AWS, Azure, shell scripts and PowerShell:
   `terraform`, `tofu`, `ansible`, `ansible-playbook`, `ansible-lint`,
   `cfn-lint`, `aws`, `az`, `bicep`, `shellcheck`, `pwsh` and `powershell`;
-- the tools of Groovy, R and PostgreSQL: `groovy`, `R`, `Rscript` and `psql`;
+- the tools of Groovy, R, SQL databases, COBOL and Flex: `groovy`, `R`,
+  `Rscript`, `psql`, `sqlplus`, `sqlcmd`, `cobc` and `mxmlc`;
 - `dotnet`, except in the scanner's own directory. SonarQube Cloud's engine runs
   it there to collect analytics.
 

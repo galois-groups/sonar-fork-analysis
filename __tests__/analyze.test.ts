@@ -821,7 +821,10 @@ describe('resolveSettings on any artifact', () => {
     'sonar.sources': { list: true, home: false },
     'sonar.projectBuildDir': { list: false, home: false },
     'sonar.kotlin.gradleProjectRoot': { list: false, home: false },
-    'sonar.projectBaseDir': { list: false, home: false }
+    'sonar.projectBaseDir': { list: false, home: false },
+    'sonar.cobol.copy.directories': { list: true, home: false },
+    'sonar.cobol.sql.catalog.csv.path': { list: false, home: false },
+    'sonar.pli.includeDdname.SYSLIB.path': { list: true, home: false }
   }
   const artifact = fc
     .record({

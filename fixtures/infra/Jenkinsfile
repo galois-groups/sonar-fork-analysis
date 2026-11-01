@@ -1,0 +1,11 @@
+// TODO: deploy from main only.
+pipeline {
+    agent any
+    stages {
+        stage('Release') {
+            steps {
+                echo 'Releasing'
+            }
+        }
+    }
+}

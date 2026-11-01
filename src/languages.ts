@@ -23,6 +23,11 @@ export const TESTED_LANGUAGES = [
   'terraform',
   'shell',
   'powershell',
+  'groovy',
+  'r',
+  'gosu',
+  'dataweave',
+  'postgres',
   'text',
   'secrets'
 ]

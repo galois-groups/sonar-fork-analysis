@@ -1,5 +1,4 @@
 -- TODO: log the greeting.
-CREATE OR REPLACE PROCEDURE greet AS
 BEGIN
   DBMS_OUTPUT.PUT_LINE('Hello');
 END;

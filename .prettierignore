@@ -2,3 +2,5 @@ dist/
 pnpm-lock.yaml
 # Helm templates are YAML only once Helm renders them.
 fixtures/infra/helm/chart/templates/
+# Prettier reads .gs as Google Apps Script, which is JavaScript.
+fixtures/infra/gosu/

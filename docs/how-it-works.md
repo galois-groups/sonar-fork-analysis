@@ -225,8 +225,9 @@ and loaded no code from its `node_modules`. It only read `tsconfig` files and
 type declarations as data.
 
 Sonar starts programs of its own to analyse some languages. One handles shell
-scripts, PowerShell and Mule applications. Another handles Helm charts. Like the
-JavaScript analyzer's Node.js, they run among the traps on every change.
+scripts, PowerShell, Groovy, R, Gosu, DataWeave, PostgreSQL and Mule
+applications. Another handles Helm charts. Like the JavaScript analyzer's
+Node.js, they run among the traps on every change.
 
 Analyzers of other languages haven't been checked. Some might start other
 programs. If you turn their language on with `build-arguments`, the action
@@ -308,6 +309,7 @@ these programs on the `PATH`:
 - the tools of Terraform, Ansible, AWS, Azure, shell scripts and PowerShell:
   `terraform`, `tofu`, `ansible`, `ansible-playbook`, `ansible-lint`,
   `cfn-lint`, `aws`, `az`, `bicep`, `shellcheck`, `pwsh` and `powershell`;
+- the tools of Groovy, R and PostgreSQL: `groovy`, `R`, `Rscript` and `psql`;
 - `dotnet`, except in the scanner's own directory. SonarQube Cloud's engine runs
   it there to collect analytics.
 

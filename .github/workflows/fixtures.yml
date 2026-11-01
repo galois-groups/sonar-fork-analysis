@@ -213,7 +213,7 @@ jobs:
           # The fork path only analyses the languages the action is tested with.
           DIRECT_ONLY:
             ${{ matrix.fixture == 'infra' && 'python/decoy.py' || '' }}
-          LANGUAGES: java,kotlin,js,ts,css,web,xml,yaml,json,docker,terraform,azureresourcemanager,shell,powershell
+          LANGUAGES: java,kotlin,js,ts,css,web,xml,yaml,json,docker,terraform,azureresourcemanager,shell,powershell,groovy,r,gosu,dataweave,postgres
 
   # The same prepared artifacts, analysed with each other tested CLI, with the same traps and checks of
   # the programs started. After the comparison, which reads what the default CLI's analysis found: these

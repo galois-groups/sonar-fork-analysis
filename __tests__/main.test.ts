@@ -628,7 +628,7 @@ describe('run in prepare mode', () => {
         'sonar.host.url=http\\://127.0.0.1\\:9',
         'sonar.nodejs.executable=/usr/bin/node',
         'app.sonar.nodejs.executable=/usr/bin/node',
-        'app.sonar.python.file.suffixes=.java',
+        'app.sonar.lang.patterns.py=**/*.java',
         'env.SECRET=leaked'
       ].join('\n')
     )
@@ -639,14 +639,14 @@ describe('run in prepare mode', () => {
     expect(core.warning).toHaveBeenCalledTimes(1)
     expect(core.warning).toHaveBeenCalledWith(
       expect.stringContaining(
-        'leaves out these settings: sonar.nodejs.executable, sonar.python.file.suffixes.'
+        'leaves out these settings: sonar.nodejs.executable, sonar.lang.patterns.py.'
       )
     )
     expect(core.info).toHaveBeenCalledWith(
       'Ignored 1 environment variables and JVM properties'
     )
     expect(summary()).toContain(
-      '| Settings left out | <code>sonar&#46;nodejs&#46;executable</code>, <code>sonar&#46;python&#46;file&#46;suffixes</code> |'
+      '| Settings left out | <code>sonar&#46;nodejs&#46;executable</code>, <code>sonar&#46;lang&#46;patterns&#46;py</code> |'
     )
     expect(summary()).toContain('1 warning: see the annotations.')
   })
@@ -1149,7 +1149,7 @@ describe('run in analyze mode', () => {
   it('writes why the scanner failed and what the analysis left out', async () => {
     process.env.GITHUB_STEP_SUMMARY = join(project, 'summary.md')
     inputs['github-token'] = 'gh-token'
-    prepared({ 'sonar.python.file.suffixes': '.java' })
+    prepared({ 'sonar.lang.patterns.py': '**/*.java' })
     exec.mockImplementation(async (_tool, _args, options) => {
       options!.listeners!.stdout!(
         Buffer.from(
@@ -1165,7 +1165,7 @@ describe('run in analyze mode', () => {
       'The Sonar scanner failed with exit code 3'
     )
     expect(summary()).toContain(
-      `### ❌ Sonar analysis failed\n\nThe Sonar scanner failed with exit code 3:\n\n<pre>${escaped('10:00:01.000 ERROR Not authorised: *** ***')}</pre>\n\nThe log has the details.\n\nLeft out of the analysis:\n\n| | |\n|---|---|\n| Settings | <code>sonar&#46;python&#46;file&#46;suffixes</code> |`
+      `### ❌ Sonar analysis failed\n\nThe Sonar scanner failed with exit code 3:\n\n<pre>${escaped('10:00:01.000 ERROR Not authorised: *** ***')}</pre>\n\nThe log has the details.\n\nLeft out of the analysis:\n\n| | |\n|---|---|\n| Settings | <code>sonar&#46;lang&#46;patterns&#46;py</code> |`
     )
     expect(summary()).toMatch(/\n\n2 warnings: see the annotations\.\n$/)
     expect(summary()).not.toContain('not&#95;a&#95;real')
@@ -1176,7 +1176,8 @@ describe('run in analyze mode', () => {
     prepared({
       'sonar.inclusions': 'src/**',
       'sonar.python.file.suffixes': '.java',
-      'sonar.lang.patterns.rust': '**/*.java'
+      'sonar.lang.patterns.rust': '**/*.java',
+      'sonar.lang.patterns.java': '**/*.ts'
     })
     inputs['build-arguments'] =
       '-Dsonar.lang.patterns.py=**/*.py\n-Dsonar.lang.patterns.java=**/*.jav'
@@ -1190,14 +1191,14 @@ describe('run in analyze mode', () => {
     )
     expect(serverLanguages).toHaveBeenCalledWith('https://sonarcloud.io', TOKEN)
     expect(settings).toContain('sonar.inclusions=src/**\n')
+    // The build's suffixes stay, but the engine ignores them for a language off.
+    expect(settings).toContain('sonar.python.file.suffixes=.java\n')
     expect(settings).toContain(`sonar.lang.patterns.py=${NO_FILE}\n`)
     expect(settings).toContain(`sonar.lang.patterns.rust=${NO_FILE}\n`)
-    expect(settings).not.toMatch(
-      /patterns\.(java|ts)=|file\.suffixes|\*\*\/\*\.java/
-    )
+    expect(settings).not.toMatch(/patterns\.(java|ts)=|\*\*\/\*\.(java|ts)/)
     expect(core.info).toHaveBeenCalledWith(
       expect.stringMatching(
-        /^Dropped settings a build never ships: .*sonar\.python\.file\.suffixes.*sonar\.lang\.patterns\.rust/
+        /^Dropped settings a build never ships: .*sonar\.lang\.patterns\.rust.*sonar\.lang\.patterns\.java/
       )
     )
     expect(core.warning).toHaveBeenCalledWith(
@@ -1220,7 +1221,7 @@ describe('run in analyze mode', () => {
     )
     const slash = sep === '/' ? '&#47;' : '&#92;'
     expect(summary()).toContain(
-      `\n\nLeft out of the analysis:\n\n| | |\n|---|---|\n| Settings | <code>sonar&#46;python&#46;file&#46;suffixes</code>, <code>sonar&#46;lang&#46;patterns&#46;rust</code> |\n| Files | <code>target${slash}classes${slash}App&#46;class</code> |\n`
+      `\n\nLeft out of the analysis:\n\n| | |\n|---|---|\n| Settings | <code>sonar&#46;lang&#46;patterns&#46;rust</code>, <code>sonar&#46;lang&#46;patterns&#46;java</code> |\n| Files | <code>target${slash}classes${slash}App&#46;class</code> |\n`
     )
     // Every warning of the step, not only the artifact's.
     expect(core.warning).toHaveBeenCalledTimes(2)

@@ -77836,6 +77836,8 @@ var PLAIN_PREFIXES = [
 ];
 var PLAIN_PATTERNS = [/^sonar\.cobol\.compilationConstants\.[^.]+\.(?:name|value)$/, /^sonar\.pli\.includeDdname\.[^.]+\.suffix$/];
 var PLAIN_SUFFIXES = [
+	".file.suffixes",
+	".file.patterns",
 	".file.identifier",
 	".activate",
 	".exclusions",

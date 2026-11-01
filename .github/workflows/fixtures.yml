@@ -70,9 +70,8 @@ jobs:
           # SonarCloud names a project after the build (fixture-maven, fixture-gradle) and labels its PR
           # check with that name, so the direct and split projects of a fixture would post same-named
           # checks that GitHub merges into one.
-          build-arguments: |
+          build-arguments:
             -Dsonar.projectName=Sonar fork analysis - ${{ matrix.name }} direct
-            ${{ matrix.fixture == 'infra' && '-Dsonar.cobol.copy.directories=' || '' }}
 
   prepare:
     name: 'Prepare ${{ matrix.fixture }} for the fork path'

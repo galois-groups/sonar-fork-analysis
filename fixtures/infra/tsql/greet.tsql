@@ -1,0 +1,6 @@
+-- TODO: log the greeting.
+CREATE PROCEDURE greet
+AS
+BEGIN
+    PRINT 'Hello';
+END;

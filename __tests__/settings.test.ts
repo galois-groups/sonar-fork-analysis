@@ -3,6 +3,8 @@ import {
   byCodeUnit,
   filterSettings,
   isAllowed,
+  isCheckoutPath,
+  isPathList,
   isShippedPath,
   moduleTree
 } from '../src/settings.js'
@@ -186,7 +188,13 @@ describe('isAllowed', () => {
     'sonar.test.inclusions',
     'sonar.typescript.tsconfigPaths',
     'sonar.python.version',
-    'sonar.android.minsdkversion.min'
+    'sonar.android.minsdkversion.min',
+    'sonar.cobol.dialect',
+    'sonar.cobol.copy.directories',
+    'sonar.cobol.compilationConstants.1.value',
+    'sonar.pli.includeDdname.SYSLIB.path',
+    'sonar.pli.includeDdname.SYSLIB.suffix',
+    'sonar.rpg.leftMarginWidth'
   ])('allows %s', (key) => {
     expect(isAllowed(key)).toBe(true)
   })
@@ -204,7 +212,10 @@ describe('isAllowed', () => {
     // They decide each file's language. That decides which analyzers load.
     'sonar.docker.file.patterns',
     'sonar.python.file.suffixes',
+    'sonar.cobol.file.suffixes',
     'sonar.lang.patterns.java',
+    // A DD name with a dot is not one the path checks recognise.
+    'sonar.pli.includeDdname.a.b.path',
     'env.COVERAGE_REPORTPATHS'
   ])('refuses %s', (key) => {
     expect(isAllowed(key)).toBe(false)
@@ -214,6 +225,18 @@ describe('isAllowed', () => {
     expect(isShippedPath('sonar.kotlin.detekt.reportPaths')).toBe(true)
     expect(isShippedPath('sonar.java.binaries')).toBe(true)
     expect(isShippedPath('sonar.sources')).toBe(false)
+  })
+
+  // As the plugins read them: getStringArray for the lists, get for the CSV catalog's directory.
+  it.each([
+    ['sonar.cobol.copy.directories', true],
+    ['sonar.cobol.db2include.directories', true],
+    ['sonar.cobol.acucobol.preprocessor.directives.directories', true],
+    ['sonar.pli.includeDdname.SYSLIB.path', true],
+    ['sonar.cobol.sql.catalog.csv.path', false]
+  ])('checks %s as a path in the checkout, read as a list: %s', (key, list) => {
+    expect(isCheckoutPath(key)).toBe(true)
+    expect(isPathList(key)).toBe(list)
   })
 })
 

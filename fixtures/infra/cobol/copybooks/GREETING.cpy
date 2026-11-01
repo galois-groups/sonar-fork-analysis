@@ -1,0 +1,1 @@
+       01  WS-GREETING  PIC X(5) VALUE 'HELLO'.

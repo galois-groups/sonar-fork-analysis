@@ -28,6 +28,15 @@ export const TESTED_LANGUAGES = [
   'gosu',
   'dataweave',
   'postgres',
+  'abap',
+  'cobol',
+  'jcl',
+  'pli',
+  'rpg',
+  'plsql',
+  'tsql',
+  'vb',
+  'flex',
   'text',
   'secrets'
 ]

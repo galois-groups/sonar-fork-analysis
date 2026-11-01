@@ -77651,6 +77651,15 @@ var TESTED_LANGUAGES = [
 	"gosu",
 	"dataweave",
 	"postgres",
+	"abap",
+	"cobol",
+	"jcl",
+	"pli",
+	"rpg",
+	"plsql",
+	"tsql",
+	"vb",
+	"flex",
 	"text",
 	"secrets"
 ];
@@ -77740,10 +77749,14 @@ function isShippedPath(bareKey) {
 var LIST_PATH_KEYS = /* @__PURE__ */ new Set([
 	"sonar.sources",
 	"sonar.tests",
-	...SHIPPED_PATH_KEYS
+	...SHIPPED_PATH_KEYS,
+	"sonar.cobol.copy.directories",
+	"sonar.cobol.db2include.directories",
+	"sonar.cobol.acucobol.preprocessor.directives.directories"
 ]);
+var PLI_INCLUDE_PATH = /^sonar\.pli\.includeDdname\.[^.]+\.path$/;
 function isPathList(bareKey) {
-	return LIST_PATH_KEYS.has(bareKey) || /paths$/i.test(bareKey);
+	return LIST_PATH_KEYS.has(bareKey) || PLI_INCLUDE_PATH.test(bareKey) || /paths$/i.test(bareKey);
 }
 var CHECKOUT_PATH_KEYS = /* @__PURE__ */ new Set([
 	"sonar.sources",
@@ -77752,8 +77765,15 @@ var CHECKOUT_PATH_KEYS = /* @__PURE__ */ new Set([
 	"sonar.kotlin.gradleProjectRoot",
 	"sonar.typescript.tsconfigPaths",
 	"sonar.typescript.tsconfigPath",
-	"sonar.dre.mulesoft.muleArtifactPath"
+	"sonar.dre.mulesoft.muleArtifactPath",
+	"sonar.cobol.copy.directories",
+	"sonar.cobol.db2include.directories",
+	"sonar.cobol.acucobol.preprocessor.directives.directories",
+	"sonar.cobol.sql.catalog.csv.path"
 ]);
+function isCheckoutPath(bareKey) {
+	return CHECKOUT_PATH_KEYS.has(bareKey) || PLI_INCLUDE_PATH.test(bareKey);
+}
 var OUTPUT_PATH_KEYS = /* @__PURE__ */ new Set(["sonar.projectBuildDir"]);
 var PLAIN_KEYS = /* @__PURE__ */ new Set([
 	"sonar.modules",
@@ -77786,6 +77806,24 @@ var PLAIN_KEYS = /* @__PURE__ */ new Set([
 	"sonar.php.frameworkDetection",
 	"sonar.terraform.provider.aws.version",
 	"sonar.terraform.provider.azure.version",
+	"sonar.cobol.dialect",
+	"sonar.cobol.sourceFormat",
+	"sonar.cobol.tab.width",
+	"sonar.cobol.tab.ignoreTabStops",
+	"sonar.cobol.byteBasedColumnCount",
+	"sonar.cobol.copy.suffixes",
+	"sonar.cobol.compilationConstants",
+	"sonar.cobol.adaprep.activation",
+	"sonar.cobol.exec.recoveryMode",
+	"sonar.cobol.preprocessor.skipping.first.matching.characters",
+	"sonar.cobol.aucobol.preprocessor.directives.default",
+	"sonar.cobol.sql.catalog.defaultSchema",
+	"sonar.pli.marginLeft",
+	"sonar.pli.marginRight",
+	"sonar.pli.extralingualCharacters",
+	"sonar.pli.includeDdnames",
+	"sonar.rpg.leftMarginWidth",
+	"sonar.plsql.defaultSchema",
 	"sonar.text.inclusions",
 	"sonar.secrets.disableEntropyFilter",
 	"sonar.secrets.disableKnownFakeSecretFilter",
@@ -77796,6 +77834,7 @@ var PLAIN_PREFIXES = [
 	"sonar.issue.enforce.",
 	"sonar.links."
 ];
+var PLAIN_PATTERNS = [/^sonar\.cobol\.compilationConstants\.[^.]+\.(?:name|value)$/, /^sonar\.pli\.includeDdname\.[^.]+\.suffix$/];
 var PLAIN_SUFFIXES = [
 	".file.identifier",
 	".activate",
@@ -77829,7 +77868,7 @@ var REPLACED_KEYS = /* @__PURE__ */ new Set([
 ]);
 function isAllowed(bareKey) {
 	if (!bareKey.startsWith("sonar.") || DENIED_PREFIXES.some((prefix) => bareKey.startsWith(prefix))) return false;
-	return isShippedPath(bareKey) || CHECKOUT_PATH_KEYS.has(bareKey) || OUTPUT_PATH_KEYS.has(bareKey) || PLAIN_KEYS.has(bareKey) || PLAIN_PREFIXES.some((prefix) => bareKey.startsWith(prefix)) || PLAIN_SUFFIXES.some((suffix) => bareKey.endsWith(suffix));
+	return isShippedPath(bareKey) || isCheckoutPath(bareKey) || OUTPUT_PATH_KEYS.has(bareKey) || PLAIN_KEYS.has(bareKey) || PLAIN_PREFIXES.some((prefix) => bareKey.startsWith(prefix)) || PLAIN_PATTERNS.some((pattern) => pattern.test(bareKey)) || PLAIN_SUFFIXES.some((suffix) => bareKey.endsWith(suffix));
 }
 function byCodeUnit(a, b) {
 	if (a < b) return -1;
@@ -78103,7 +78142,7 @@ function stageAnalysis(settings, roots, staging, buildTool, pullRequest, extraFi
 	for (const [key, value] of settings) {
 		const { prefix, bareKey } = tree.split(key);
 		const isShipped = isShippedPath(bareKey);
-		if (!isShipped && !CHECKOUT_PATH_KEYS.has(bareKey) && !OUTPUT_PATH_KEYS.has(bareKey)) {
+		if (!isShipped && !isCheckoutPath(bareKey) && !OUTPUT_PATH_KEYS.has(bareKey)) {
 			out[key] = value;
 			continue;
 		}
@@ -78189,7 +78228,7 @@ function resolveSettings(settings, workspace, home) {
 	const withSources = /* @__PURE__ */ new Set();
 	for (const [key, value] of kept) {
 		const { prefix, bareKey } = tree.split(key);
-		if (!isShippedPath(bareKey) && !OUTPUT_PATH_KEYS.has(bareKey) && !CHECKOUT_PATH_KEYS.has(bareKey)) {
+		if (!isShippedPath(bareKey) && !OUTPUT_PATH_KEYS.has(bareKey) && !isCheckoutPath(bareKey)) {
 			properties.set(key, value);
 			continue;
 		}

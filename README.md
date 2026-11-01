@@ -95,7 +95,9 @@ test:
   Pipelines, ARM templates, Mule applications and more;
 - Dockerfiles and Containerfiles;
 - Shell scripts, PowerShell, Terraform and Bicep;
-- Groovy and Jenkins pipelines, R, Gosu, DataWeave and PostgreSQL.
+- Groovy and Jenkins pipelines, R, Gosu and DataWeave;
+- PL/SQL, T-SQL and PostgreSQL;
+- ABAP, COBOL, JCL, PL/I, RPG, VB6 and Flex.
 
 Files in other languages get no issues from their own analyzer on pull requests
 from forks. For example, a Maven project's Python files get none. So these pull

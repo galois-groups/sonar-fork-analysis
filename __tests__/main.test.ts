@@ -1175,7 +1175,7 @@ describe('run in analyze mode', () => {
     process.env.GITHUB_STEP_SUMMARY = join(project, 'summary.md')
     prepared({
       'sonar.inclusions': 'src/**',
-      'sonar.python.file.suffixes': '.java',
+      'sonar.rust.file.suffixes': '.java',
       'sonar.lang.patterns.rust': '**/*.java',
       'sonar.lang.patterns.java': '**/*.ts'
     })
@@ -1191,8 +1191,8 @@ describe('run in analyze mode', () => {
     )
     expect(serverLanguages).toHaveBeenCalledWith('https://sonarcloud.io', TOKEN)
     expect(settings).toContain('sonar.inclusions=src/**\n')
-    // The build's suffixes stay, but the engine ignores them for a language off.
-    expect(settings).toContain('sonar.python.file.suffixes=.java\n')
+    // The build's suffixes stay, but the engine ignores them while the language is off.
+    expect(settings).toContain('sonar.rust.file.suffixes=.java\n')
     expect(settings).toContain(`sonar.lang.patterns.py=${NO_FILE}\n`)
     expect(settings).toContain(`sonar.lang.patterns.rust=${NO_FILE}\n`)
     expect(settings).not.toMatch(/patterns\.(java|ts)=|\*\*\/\*\.(java|ts)/)

@@ -296,7 +296,8 @@ The tests check that:
 
 For [turning languages off](#the-analyzers), they also check that:
 
-- a language's `sonar.lang.patterns` setting replaces its own patterns;
+- a language's `sonar.lang.patterns` setting replaces its own file suffixes and
+  patterns;
 - the pattern that turns a language off matches no file;
 - the engine loads analyzers only for the languages it finds.
 

@@ -176,14 +176,16 @@ describe('resolveSettings on any settings', () => {
     settingText.map((text) => `sonar.${text}.exclusions`),
     settingText.map((text) => `sonar.${text}.reportPaths`),
     settingText.map((text) => `sonar.pli.includeDdname.${text}.path`),
-    // What maps files to languages. That decides which analyzers load.
+    // What maps files to languages. Of these, sonar.lang.patterns.* decides which languages run.
     fc
       .constantFrom('java', 'py', 'rust', 'cobol', '')
       .chain((language) =>
         fc.constantFrom(
           `sonar.${language}.file.suffixes`,
           `sonar.${language}.file.patterns`,
-          `sonar.lang.patterns.${language}`
+          `sonar.lang.patterns.${language}`,
+          `sonar.lang.patterns.${language}.file.suffixes`,
+          `sonar.lang.patterns.${language}.exclusions`
         )
       )
   )
@@ -233,7 +235,7 @@ describe('resolveSettings on any settings', () => {
     fc.dictionary(key, value).map((random) => ({ ...random, ...modules }))
   )
 
-  it('keeps no forbidden setting, no language mapping, no placeholder in values, no half character, and fails only by refusing', () => {
+  it('keeps no forbidden setting, no sonar.lang.patterns.*, no placeholder in values, no half character, and fails only by refusing', () => {
     freshDirectories()
     mkdirSync(join(workspace, 'src'))
     mkdirSync(join(workspace, 'lib'))

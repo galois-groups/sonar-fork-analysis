@@ -212,8 +212,9 @@ describe('isAllowed', () => {
     'sonar.cfamily.compile-commands',
     'sonar.rust.cargo.manifestPaths',
     'sonar.javascript.node.maxspace',
-    // It would replace the pattern that turns an untested language off.
+    // Only the Sonar workflow decides which languages run.
     'sonar.lang.patterns.java',
+    'sonar.lang.patterns.py.file.suffixes',
     // A DD name with a dot is not one the path checks recognise.
     'sonar.pli.includeDdname.a.b.path',
     'env.COVERAGE_REPORTPATHS'

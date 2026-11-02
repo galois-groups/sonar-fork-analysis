@@ -77852,7 +77852,8 @@ var DENIED_PREFIXES = [
 	"sonar.qualitygate.",
 	"sonar.analysis.",
 	"sonar.plsql.jdbc.",
-	"sonar.featureflag."
+	"sonar.featureflag.",
+	"sonar.lang.patterns."
 ];
 var REPLACED_KEYS = /* @__PURE__ */ new Set([
 	"sonar.host.url",

@@ -145,15 +145,6 @@ Server, the same list is at `<your server>/api/languages/list`.
 
 A language you turn on is untested: use it at your own risk.
 
-COBOL is tested, but it has no default file suffixes. The fork path never
-carries suffixes from the build. So a COBOL project sets them in the Sonar
-workflow too:
-
-```yaml
-build-arguments: |
-  -Dsonar.cobol.file.suffixes=cbl,cpy
-```
-
 ## Which commit the build tests
 
 On a pull request, `actions/checkout` checks out a merge of the pull request

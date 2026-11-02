@@ -163,10 +163,12 @@ const PLAIN_PATTERNS = [
   /^sonar\.pli\.includeDdname\.[^.]+\.suffix$/
 ]
 
-// Settings every language has its own copy of, so new languages need no release. File suffixes and
-// patterns stay out, like sonar.lang.patterns.*: they decide each file's language, and so which
-// analyzers load. The analysis blocks untested languages with sonar.lang.patterns.*.
+// Settings every language has its own copy of, so new languages need no release. The engine ignores a
+// language's file suffixes and patterns once sonar.lang.patterns.<language> is set. The analysis sets
+// it for every untested language.
 const PLAIN_SUFFIXES = [
+  '.file.suffixes',
+  '.file.patterns',
   '.file.identifier',
   '.activate',
   '.exclusions',
@@ -184,7 +186,9 @@ const DENIED_PREFIXES = [
   'sonar.qualitygate.',
   'sonar.analysis.',
   'sonar.plsql.jdbc.',
-  'sonar.featureflag.'
+  'sonar.featureflag.',
+  // Only the Sonar workflow decides which languages run.
+  'sonar.lang.patterns.'
 ]
 
 // Dropped without a warning: what every build emits for its own scanner, which the analysis

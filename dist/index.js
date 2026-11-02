@@ -77836,6 +77836,8 @@ var PLAIN_PREFIXES = [
 ];
 var PLAIN_PATTERNS = [/^sonar\.cobol\.compilationConstants\.[^.]+\.(?:name|value)$/, /^sonar\.pli\.includeDdname\.[^.]+\.suffix$/];
 var PLAIN_SUFFIXES = [
+	".file.suffixes",
+	".file.patterns",
 	".file.identifier",
 	".activate",
 	".exclusions",
@@ -77850,7 +77852,8 @@ var DENIED_PREFIXES = [
 	"sonar.qualitygate.",
 	"sonar.analysis.",
 	"sonar.plsql.jdbc.",
-	"sonar.featureflag."
+	"sonar.featureflag.",
+	"sonar.lang.patterns."
 ];
 var REPLACED_KEYS = /* @__PURE__ */ new Set([
 	"sonar.host.url",

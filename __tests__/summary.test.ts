@@ -85,7 +85,7 @@ describe('directSummary', () => {
         warnings: 0
       })
     ).toBe(
-      '# ✅ Sonar analysis\n\nAnalysed <code>key</code> directly with the Maven build. <a href="https&#58;&#47;&#47;sonarcloud&#46;io&#47;dashboard&#63;id&#61;key&#38;pullRequest&#61;12">See the analysis</a>'
+      '## ✅ Sonar analysis\n\nAnalysed <code>key</code> directly with the Maven build. <a href="https&#58;&#47;&#47;sonarcloud&#46;io&#47;dashboard&#63;id&#61;key&#38;pullRequest&#61;12">See the analysis</a>'
     )
   })
 
@@ -148,7 +148,7 @@ describe('directSummary', () => {
         warnings: 2
       })
     ).toBe(
-      '# ✅ Sonar analysis\n\nAnalysed <code>key</code> directly with the scanner CLI 8&#46;2&#46;0&#46;6438.\n\n2 warnings: see the annotations.'
+      '## ✅ Sonar analysis\n\nAnalysed <code>key</code> directly with the scanner CLI 8&#46;2&#46;0&#46;6438.\n\n2 warnings: see the annotations.'
     )
   })
 
@@ -180,7 +180,7 @@ describe('prepareSummary', () => {
   it('lists what the artifact carries', () => {
     expect(prepareSummary(facts)).toBe(
       [
-        '# 📦 Sonar analysis prepared',
+        '## 📦 Sonar analysis prepared',
         '',
         'The Sonar workflow analyses this pull request when this run finishes, using what this build ships:',
         '',
@@ -279,7 +279,7 @@ describe('analyzeSummary', () => {
   it('names the pull request, the commit, the fork and what stays off', () => {
     expect(analyzeSummary({ ...facts, untested: ['cpp', 'rust'] })).toBe(
       [
-        '# ✅ Sonar analysis of pull request #12',
+        '## ✅ Sonar analysis of pull request #12',
         '',
         'Analysed commit <code>abcdef0</code> on branch <code>feature&#47;x</code> of <code>fork&#47;repo</code> with the scanner CLI 8&#46;2&#46;0&#46;6438. <a href="https&#58;&#47;&#47;sonarcloud&#46;io&#47;dashboard&#63;id&#61;key&#38;pullRequest&#61;12">See the analysis</a>',
         '',
@@ -299,7 +299,7 @@ describe('analyzeSummary', () => {
       warnings: 3
     })
     expect(summary).toMatch(
-      /^# ✅ Sonar analysis of branch <code>release<\/code>\n/
+      /^## ✅ Sonar analysis of branch <code>release<\/code>\n/
     )
     expect(summary).not.toContain(' on branch')
     expect(summary).toContain(
@@ -408,7 +408,7 @@ describe('analyzeSummary', () => {
   it('names neither for the default branch', () => {
     expect(
       analyzeSummary({ ...facts, pullRequest: undefined, branch: undefined })
-    ).toMatch(/^# ✅ Sonar analysis\n\nAnalysed commit/)
+    ).toMatch(/^## ✅ Sonar analysis\n\nAnalysed commit/)
   })
 })
 
@@ -425,7 +425,7 @@ describe('reason', () => {
 describe('skippedSummary', () => {
   it('gives the reason under its heading', () => {
     expect(skippedSummary(reason`Nothing to analyse.`)).toBe(
-      '# ⏭️ No Sonar analysis\n\nNothing to analyse.'
+      '## ⏭️ No Sonar analysis\n\nNothing to analyse.'
     )
   })
 })
@@ -443,7 +443,7 @@ describe('failedSummary', () => {
 
   it('shows the error as text and sends to the log', () => {
     expect(failedSummary(facts)).toBe(
-      '# ❌ Sonar analysis failed\n\n<pre>Input required&#58; project&#45;key</pre>\n\nThe log has the details.'
+      '## ❌ Sonar analysis failed\n\n<pre>Input required&#58; project&#45;key</pre>\n\nThe log has the details.'
     )
   })
 
@@ -456,7 +456,7 @@ describe('failedSummary', () => {
     })
     expect(summary).toBe(
       [
-        '# ❌ Sonar analysis failed',
+        '## ❌ Sonar analysis failed',
         '',
         'The Sonar scanner failed with exit code 3:',
         '',
@@ -483,7 +483,7 @@ describe('failedSummary', () => {
         output: []
       })
     ).toBe(
-      '# ❌ Sonar analysis failed\n\nThe Maven build failed with exit code 1.\n\nThe log has the details.'
+      '## ❌ Sonar analysis failed\n\nThe Maven build failed with exit code 1.\n\nThe log has the details.'
     )
   })
 
@@ -509,7 +509,7 @@ describe('failedSummary', () => {
         output: ['[ERROR] sqa_token']
       })
     ).toBe(
-      '# ❌ Sonar analysis failed\n\nx &#42;&#42;&#42;:\n\n<pre>&#91;ERROR&#93; &#42;&#42;&#42;</pre>\n\nThe log has the details.'
+      '## ❌ Sonar analysis failed\n\nx &#42;&#42;&#42;:\n\n<pre>&#91;ERROR&#93; &#42;&#42;&#42;</pre>\n\nThe log has the details.'
     )
     expect(summary).not.toContain('sqa')
   })

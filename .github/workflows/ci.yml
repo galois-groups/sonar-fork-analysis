@@ -113,6 +113,10 @@ jobs:
           sonar-organization: galois-groups
           sonar-token: ${{ secrets.SONAR_TOKEN }}
 
+      - name: 'Summary probe'
+        if: runner.os == 'Linux'
+        run: echo '### Summary probe' >> "$GITHUB_STEP_SUMMARY"
+
   # The branch ruleset requires this name instead of each job's. A new job must join its needs.
   result:
     name: 'Every CI check passed'

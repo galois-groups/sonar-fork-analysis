@@ -153,7 +153,7 @@ export function directSummary(facts: {
     facts.tool === 'scanner'
       ? `the scanner CLI ${escaped(facts.scannerVersion)}`
       : (TOOLS[facts.tool] ?? escaped(facts.tool))
-  return `### ✅ Sonar analysis\n\nAnalysed ${code(facts.projectKey)} directly with ${build}.${link(facts.report)}${warned(facts.warnings)}`
+  return `# ✅ Sonar analysis\n\nAnalysed ${code(facts.projectKey)} directly with ${build}.${link(facts.report)}${warned(facts.warnings)}`
 }
 
 export function prepareSummary(facts: {
@@ -178,7 +178,7 @@ export function prepareSummary(facts: {
   rows.push(['Files shipped', count(facts.files)])
   if (facts.bytes !== undefined) rows.push(['Size', size(facts.bytes)])
   const next = facts.pullRequest ? 'this pull request' : 'this build'
-  return `### 📦 Sonar analysis prepared\n\nThe Sonar workflow analyses ${next} when this run finishes, using what this build ships:\n\n${table(rows)}${warned(facts.warnings)}`
+  return `# 📦 Sonar analysis prepared\n\nThe Sonar workflow analyses ${next} when this run finishes, using what this build ships:\n\n${table(rows)}${warned(facts.warnings)}`
 }
 
 export function analyzeSummary(facts: {
@@ -211,7 +211,7 @@ export function analyzeSummary(facts: {
     facts.leftOut.length > 0
       ? `\n\nLeft out of the analysis:\n\n${table(leftOutRows(facts.leftOut))}`
       : ''
-  return `### ✅ Sonar analysis${what}\n\nAnalysed commit ${code(facts.commit.slice(0, 7))}${onBranch} of ${code(facts.repository)} with the scanner CLI ${escaped(facts.scannerVersion)}.${link(facts.report)}\n\nTurned off: dependency analysis and build-system autoconfiguration.${untested}${on}${left}${warned(facts.warnings)}`
+  return `# ✅ Sonar analysis${what}\n\nAnalysed commit ${code(facts.commit.slice(0, 7))}${onBranch} of ${code(facts.repository)} with the scanner CLI ${escaped(facts.scannerVersion)}.${link(facts.report)}\n\nTurned off: dependency analysis and build-system autoconfiguration.${untested}${on}${left}${warned(facts.warnings)}`
 }
 
 // <pre> keeps the lines, and nothing in it links.
@@ -242,7 +242,7 @@ export function failedSummary(facts: {
     facts.leftOut.length > 0
       ? `\n\nLeft out of the analysis:\n\n${table(leftOutRows(facts.leftOut))}`
       : ''
-  return `### ❌ Sonar analysis failed\n\n${what}\n\nThe log has the details.${left}${warned(facts.warnings)}`
+  return `# ❌ Sonar analysis failed\n\n${what}\n\nThe log has the details.${left}${warned(facts.warnings)}`
 }
 
 export type Reason = { text: string; markdown: string }
@@ -264,7 +264,7 @@ export function reason(
 }
 
 export function skippedSummary(why: Reason): string {
-  return `### ⏭️ No Sonar analysis\n\n${why.markdown}`
+  return `# ⏭️ No Sonar analysis\n\n${why.markdown}`
 }
 
 // A summary is a courtesy: failing to build or write one must never fail the analysis.

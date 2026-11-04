@@ -328,7 +328,7 @@ describe('run', () => {
     await run()
 
     expect(summary()).toBe(
-      `### ❌ Sonar analysis failed\n\nThe Maven build failed with exit code 1:\n\n<pre>${escaped('[ERROR] Failed to execute goal compiler:compile on project x: Compilation failure')}</pre>\n\nThe log has the details.\n`
+      `# ❌ Sonar analysis failed\n\nThe Maven build failed with exit code 1:\n\n<pre>${escaped('[ERROR] Failed to execute goal compiler:compile on project x: Compilation failure')}</pre>\n\nThe log has the details.\n`
     )
   })
 
@@ -547,7 +547,7 @@ describe('run in prepare mode', () => {
       'The Gradle build failed with exit code 1'
     )
     expect(summary()).toBe(
-      `### ❌ Sonar analysis failed\n\nThe Gradle build failed with exit code 1:\n\n<pre>${escaped("Execution failed for task ':compileJava'.")}</pre>\n\nThe log has the details.\n`
+      `# ❌ Sonar analysis failed\n\nThe Gradle build failed with exit code 1:\n\n<pre>${escaped("Execution failed for task ':compileJava'.")}</pre>\n\nThe log has the details.\n`
     )
   })
 
@@ -1108,7 +1108,7 @@ describe('run in analyze mode', () => {
       readFileSync(join(project, 'target', 'classes', 'App.class'), 'utf8')
     ).toBe('bytes')
     expect(summary()).toContain(
-      '### ✅ Sonar analysis\n\nAnalysed commit <code>head&#45;sh</code>'
+      '# ✅ Sonar analysis\n\nAnalysed commit <code>head&#45;sh</code>'
     )
     expect(summary()).toContain(
       "Languages this action isn't tested with stay off: <code>py</code>, <code>rust</code>."
@@ -1165,7 +1165,7 @@ describe('run in analyze mode', () => {
       'The Sonar scanner failed with exit code 3'
     )
     expect(summary()).toContain(
-      `### ❌ Sonar analysis failed\n\nThe Sonar scanner failed with exit code 3:\n\n<pre>${escaped('10:00:01.000 ERROR Not authorised: *** ***')}</pre>\n\nThe log has the details.\n\nLeft out of the analysis:\n\n| | |\n|---|---|\n| Settings | <code>sonar&#46;lang&#46;patterns&#46;py</code> |`
+      `# ❌ Sonar analysis failed\n\nThe Sonar scanner failed with exit code 3:\n\n<pre>${escaped('10:00:01.000 ERROR Not authorised: *** ***')}</pre>\n\nThe log has the details.\n\nLeft out of the analysis:\n\n| | |\n|---|---|\n| Settings | <code>sonar&#46;lang&#46;patterns&#46;py</code> |`
     )
     expect(summary()).toMatch(/\n\n2 warnings: see the annotations\.\n$/)
     expect(summary()).not.toContain('not&#95;a&#95;real')
@@ -1437,7 +1437,7 @@ describe('run in analyze mode', () => {
         'success: Skipped: the build was for #8'
       ])
       expect(summary()).toBe(
-        "### ⏭️ No Sonar analysis\n\nThe build's pull request #8 is closed or has newer commits: nothing to analyse.\n"
+        "# ⏭️ No Sonar analysis\n\nThe build's pull request #8 is closed or has newer commits: nothing to analyse.\n"
       )
       expect(core.setFailed).not.toHaveBeenCalled()
     })
@@ -1478,7 +1478,7 @@ describe('run in analyze mode', () => {
 
       expect(statuses()).toEqual([])
       expect(summary()).toBe(
-        '### ⏭️ No Sonar analysis\n\nThe build already analysed this commit directly.\n'
+        '# ⏭️ No Sonar analysis\n\nThe build already analysed this commit directly.\n'
       )
       expect(getExecOutput).not.toHaveBeenCalled()
       expect(core.setFailed).not.toHaveBeenCalled()
@@ -1517,7 +1517,7 @@ describe('run in analyze mode', () => {
 
       expect(statuses()).toEqual([])
       expect(summary()).toBe(
-        '### ⏭️ No Sonar analysis\n\nThe build prepared other projects, not <code>key</code>.\n'
+        '# ⏭️ No Sonar analysis\n\nThe build prepared other projects, not <code>key</code>.\n'
       )
       expect(getExecOutput).not.toHaveBeenCalled()
       expect(core.setFailed).not.toHaveBeenCalled()
@@ -1570,7 +1570,7 @@ describe('run in analyze mode', () => {
 
       expect(statuses()).toEqual([])
       expect(summary()).toBe(
-        '### ⏭️ No Sonar analysis\n\nNo open pull request has <code>head&#45;sha</code> as its head any more; a newer run analyses it.\n'
+        '# ⏭️ No Sonar analysis\n\nNo open pull request has <code>head&#45;sha</code> as its head any more; a newer run analyses it.\n'
       )
       expect(core.notice).toHaveBeenCalledWith(
         expect.stringContaining('No open pull request')
@@ -1656,7 +1656,7 @@ describe('run in analyze mode', () => {
 
       expect(statuses()).toEqual(['failure: The build left nothing to analyse'])
       expect(summary()).toBe(
-        '### ⏭️ No Sonar analysis\n\nNo <code>sonar&#45;fork&#45;analysis&#45;key</code> artifact: the build left nothing to analyse.\n'
+        '# ⏭️ No Sonar analysis\n\nNo <code>sonar&#45;fork&#45;analysis&#45;key</code> artifact: the build left nothing to analyse.\n'
       )
       expect(getExecOutput).not.toHaveBeenCalled()
       expect(core.setFailed).not.toHaveBeenCalled()

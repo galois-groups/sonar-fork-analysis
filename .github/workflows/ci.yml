@@ -102,12 +102,12 @@ jobs:
         # Only the Linux run's coverage reaches Sonar.
         run: npm test -- --coverage.enabled=${{ runner.os == 'Linux' }}
 
-      # This repository analysed by its released action, as the README sets it up: directly with the
-      # token, through the Sonar workflow without it, on pull requests from forks and Dependabot. Once,
-      # with the Linux run's coverage.
+      # This repository analysed as the README sets it up: directly with the token, through the Sonar
+      # workflow without it, on pull requests from forks and Dependabot. Once, with the Linux run's
+      # coverage. It uses the action at this commit, so a pull request shows the effect of its changes.
       - name: 'Analyse with Sonar'
         if: runner.os == 'Linux'
-        uses: galois-groups/sonar-fork-analysis@e1bb6680448bbe2646e1ef3a3245c3d6ac52c4bc # v2.1.0
+        uses: $/
         with:
           project-key: galois-groups_sonar-fork-analysis
           sonar-organization: galois-groups

@@ -108409,7 +108409,7 @@ var TOOLS = {
 };
 function directSummary(facts) {
 	const build = facts.tool === "scanner" ? `the scanner CLI ${escaped(facts.scannerVersion)}` : TOOLS[facts.tool] ?? escaped(facts.tool);
-	return `### ✅ Sonar analysis\n\nAnalysed ${code(facts.projectKey)} directly with ${build}.${link(facts.report)}${warned(facts.warnings)}`;
+	return `## ✅ Sonar analysis\n\nAnalysed ${code(facts.projectKey)} directly with ${build}.${link(facts.report)}${warned(facts.warnings)}`;
 }
 function prepareSummary(facts) {
 	const rows = [["Artifact", code(facts.artifact)], ["Settings carried over", count(facts.settings)]];
@@ -108417,7 +108417,7 @@ function prepareSummary(facts) {
 	if (facts.outside.length > 0) rows.push(["Paths outside the workspace", bounded(named(facts.outside))]);
 	rows.push(["Files shipped", count(facts.files)]);
 	if (facts.bytes !== void 0) rows.push(["Size", size(facts.bytes)]);
-	return `### 📦 Sonar analysis prepared\n\nThe Sonar workflow analyses ${facts.pullRequest ? "this pull request" : "this build"} when this run finishes, using what this build ships:\n\n${table(rows)}${warned(facts.warnings)}`;
+	return `## 📦 Sonar analysis prepared\n\nThe Sonar workflow analyses ${facts.pullRequest ? "this pull request" : "this build"} when this run finishes, using what this build ships:\n\n${table(rows)}${warned(facts.warnings)}`;
 }
 function analyzeSummary(facts) {
 	let what = "";
@@ -108427,7 +108427,7 @@ function analyzeSummary(facts) {
 	const untested = facts.untested.length > 0 ? `\n\nLanguages this action isn't tested with stay off: ${list(facts.untested)}.` : "";
 	const on = facts.turnedOn.length > 0 ? `\n\nTurned on by build-arguments: ${list(facts.turnedOn)}.` : "";
 	const left = facts.leftOut.length > 0 ? `\n\nLeft out of the analysis:\n\n${table(leftOutRows(facts.leftOut))}` : "";
-	return `### ✅ Sonar analysis${what}\n\nAnalysed commit ${code(facts.commit.slice(0, 7))}${onBranch} of ${code(facts.repository)} with the scanner CLI ${escaped(facts.scannerVersion)}.${link(facts.report)}\n\nTurned off: dependency analysis and build-system autoconfiguration.${untested}${on}${left}${warned(facts.warnings)}`;
+	return `## ✅ Sonar analysis${what}\n\nAnalysed commit ${code(facts.commit.slice(0, 7))}${onBranch} of ${code(facts.repository)} with the scanner CLI ${escaped(facts.scannerVersion)}.${link(facts.report)}\n\nTurned off: dependency analysis and build-system autoconfiguration.${untested}${on}${left}${warned(facts.warnings)}`;
 }
 var pre = (text) => `<pre>${escaped(text)}</pre>`;
 var MESSAGE = 2e3;
@@ -108439,7 +108439,7 @@ function failedSummary(facts) {
 	let what = pre(message);
 	if (facts.output) what = facts.output.length > 0 ? `${escaped(message)}:\n\n${pre(redacted(facts.output.join("\n")))}` : `${escaped(message)}.`;
 	const left = facts.leftOut.length > 0 ? `\n\nLeft out of the analysis:\n\n${table(leftOutRows(facts.leftOut))}` : "";
-	return `### ❌ Sonar analysis failed\n\n${what}\n\nThe log has the details.${left}${warned(facts.warnings)}`;
+	return `## ❌ Sonar analysis failed\n\n${what}\n\nThe log has the details.${left}${warned(facts.warnings)}`;
 }
 function reason(words, ...values) {
 	let text = words[0] ?? "";
@@ -108455,7 +108455,7 @@ function reason(words, ...values) {
 	};
 }
 function skippedSummary(why) {
-	return `### ⏭️ No Sonar analysis\n\n${why.markdown}`;
+	return `## ⏭️ No Sonar analysis\n\n${why.markdown}`;
 }
 function writeSummary(build) {
 	const path = process.env.GITHUB_STEP_SUMMARY;

@@ -24,11 +24,12 @@ import {
 import { warn } from './warnings.js'
 
 // The version that runs unless the workflow names another, and every version the checks run against.
-export const DEFAULT_VERSION = '8.3.0.16463'
+export const DEFAULT_VERSION = '8.4.0.16527'
 export const TESTED_VERSIONS = [
   '8.0.1.6346',
   '8.1.0.6389',
   '8.2.0.6438',
+  '8.3.1.16491',
   DEFAULT_VERSION
 ]
 

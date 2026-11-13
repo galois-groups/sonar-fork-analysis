@@ -10757,9 +10757,9 @@ function readAttributeStr(xmlData, i) {
 * and moving to the next starting position — one full backtrack per
 * position, which is quadratic in the length of the run.
 *
-* A single forward-only scan can never backtrack, so it can't be made slow
-* this way no matter how much whitespace the input contains — it's always
-* proportional to the length of the string, once.
+* The scan is forward-only: the cursor never moves backwards, so each
+* character is visited a constant number of times and the cost is linear
+* in the length of the string.
 *
 * Each returned token mirrors the shape the old regex match array had, so
 * the validation logic below (which reads token[1]..token[6]) didn't need
@@ -10786,7 +10786,7 @@ function scanAttributeTokens(attrStr) {
 		while (i < len && isWhiteSpace(attrStr[i])) i++;
 		if (i >= len) break;
 		if (attrStr[i] === "=") {
-			i = tokenStart + 1;
+			i++;
 			continue;
 		}
 		const leadingWs = attrStr.slice(tokenStart, i);
@@ -13728,10 +13728,56 @@ var SQL_STRICT_EXTRA = [
 	}
 ];
 var SQL_STRICT_PATTERNS = [...SQL_PATTERNS, ...SQL_STRICT_EXTRA];
+// node_modules/is-unsafe/src/util/decode-entities.js
+/**
+* Decode the HTML character references that matter for markup-context
+* detection.
+*
+* Browsers decode character references in attribute values before they
+* interpret a URL, so `javascript&#58;alert(1)` in an href is the
+* `javascript:` scheme. The HTML/XML/SVG rules match literal characters, so
+* without this step such payloads slip through.
+*
+* Deliberately NOT a full entity decoder. It decodes only:
+*   - decimal refs  &#58;  &#058;  &#00000058;  &#58   (any leading zeros,
+*                   trailing ; optional — browsers accept both)
+*   - hex refs      &#x3a; &#X3A; &#x0000003a; &#x3a   (same)
+*   - named refs    &colon;  &Tab;  &NewLine;
+*       Named refs are CASE-SENSITIVE and REQUIRE the trailing ';', exactly
+*       like a browser (so `&COLON;` and `&colon` are not decoded).
+*       &Tab; / &NewLine; matter because the URL parser strips tab/newline,
+*       so `java&Tab;script:` is still a javascript: URL.
+*
+* It does NOT decode &amp; (single pass only), so double-encoded text such as
+* "&amp;lt;script&amp;gt;" stays literal — a browser renders that as text.
+*
+* All quantifiers are bounded; no ReDoS risk.
+*
+* @param {string} input
+* @returns {string}
+*/
+var NAMED = Object.freeze({
+	colon: ":",
+	Tab: "	",
+	NewLine: "\n"
+});
+var ENTITY_RE = /&(?:#[xX]0*([0-9a-fA-F]{1,6});?|#0*([0-9]{1,7});?|([a-zA-Z][a-zA-Z0-9]{1,15});)/g;
+function decodeEntities(input) {
+	if (input.indexOf("&") === -1) return input;
+	return input.replace(ENTITY_RE, (match, hex, dec, name) => {
+		if (name !== void 0) return Object.prototype.hasOwnProperty.call(NAMED, name) ? NAMED[name] : match;
+		const cp = hex !== void 0 ? parseInt(hex, 16) : parseInt(dec, 10);
+		if (!Number.isFinite(cp) || cp > 1114111) return match;
+		return String.fromCodePoint(cp);
+	});
+}
 // node_modules/is-unsafe/src/index.js
 HTML_PATTERNS.label = "HTML";
 XML_PATTERNS.label = "XML";
 SVG_PATTERNS.label = "SVG";
+HTML_PATTERNS.decodeEntities = true;
+XML_PATTERNS.decodeEntities = true;
+SVG_PATTERNS.decodeEntities = true;
 SQL_PATTERNS.label = "SQL";
 SQL_STRICT_PATTERNS.label = "SQL-STRICT";
 SHELL_PATTERNS.label = "SHELL";
@@ -13803,6 +13849,19 @@ function normalise(context) {
 	};
 }
 /**
+* For markup contexts, return an entity-decoded copy of `value` to test
+* alongside the raw input, or null when there is nothing extra to test.
+*
+* @param {string} value
+* @param {Rule[]} list
+* @returns {string|null}
+*/
+function decodedCopy(value, list) {
+	if (!list.decodeEntities) return null;
+	const decoded = decodeEntities(value);
+	return decoded === value ? null : decoded;
+}
+/**
 * Test value against a single PatternList. Returns the first MatchResult or null.
 *
 * @param {string} value
@@ -13811,7 +13870,8 @@ function normalise(context) {
 */
 function matchList(value, list) {
 	const label = list.label ?? "CUSTOM";
-	for (const rule of list) if (rule.pattern.test(value)) return {
+	const decoded = decodedCopy(value, list);
+	for (const rule of list) if (rule.pattern.test(value) || decoded !== null && rule.pattern.test(decoded)) return {
 		context: label,
 		id: rule.id,
 		description: rule.description,
@@ -13965,7 +14025,10 @@ function resolveNameSpace(tagname) {
 	}
 	return tagname;
 }
-var attrsRegx = /* @__PURE__ */ new RegExp("([^\\s=]+)\\s*(=\\s*(['\"])([\\s\\S]*?)\\3)?", "gm");
+var attrsRegx = /([^\s=]+)\s*(=\s*(?:"([^"]*)"|'([^']*)'))?/gm;
+function attrValue(match) {
+	return match[3] !== void 0 ? match[3] : match[4];
+}
 function buildAttributesMap(attrStr, jPath, tagName, force = false) {
 	const options = this.options;
 	if (force === true || options.ignoreAttributes !== true && typeof attrStr === "string") {
@@ -13977,7 +14040,7 @@ function buildAttributesMap(attrStr, jPath, tagName, force = false) {
 		const rawAttrsForMatcher = {};
 		for (let i = 0; i < len; i++) {
 			const attrName = this.resolveNameSpace(matches[i][1]);
-			const oldVal = matches[i][4];
+			const oldVal = attrValue(matches[i]);
 			if (attrName.length && oldVal !== void 0) {
 				let val = oldVal;
 				if (options.trimValues) val = val.trim();
@@ -13997,7 +14060,7 @@ function buildAttributesMap(attrStr, jPath, tagName, force = false) {
 			if (attrName.length) {
 				if (options.transformAttributeName) aName = options.transformAttributeName(aName);
 				aName = sanitizeName(aName, options);
-				if (matches[i][4] !== void 0) {
+				if (attrValue(matches[i]) !== void 0) {
 					const oldVal = processedVals[i];
 					const newVal = options.attributeValueProcessor(attrName, oldVal, jPathStr);
 					if (newVal === null || newVal === void 0) attrs[aName] = oldVal;
@@ -14020,7 +14083,12 @@ function buildAttributesMap(attrStr, jPath, tagName, force = false) {
 	}
 }
 var parseXml = function(xmlData) {
-	xmlData = xmlData.replace(/\r\n?/g, "\n");
+	const options = this.options;
+	const crlfPositions = options.captureMetaData ? [] : void 0;
+	xmlData = xmlData.replace(/\r\n?/g, options.captureMetaData ? (newline, index) => {
+		if (newline.length === 2) crlfPositions.push(index - crlfPositions.length);
+		return "\n";
+	} : "\n");
 	const xmlObj = new XmlNode("!xml");
 	let currentNode = xmlObj;
 	let textData = "";
@@ -14029,7 +14097,6 @@ var parseXml = function(xmlData) {
 	this.entityExpansionCount = 0;
 	this.currentExpandedLength = 0;
 	this.doctypefound = false;
-	const options = this.options;
 	const docTypeReader = new DocTypeReader(options.processEntities);
 	const xmlLen = xmlData.length;
 	for (let i = 0; i < xmlLen; i++) if (xmlData[i] === "<") {
@@ -14052,7 +14119,7 @@ var parseXml = function(xmlData) {
 			this.matcher.pop();
 			this.isCurrentNodeStopNode = false;
 			currentNode = this.tagsNodeStack.pop() || xmlObj;
-			if (options.captureMetaData && currentNode) currentNode.addEndIndex(closeIndex + 1);
+			if (options.captureMetaData && currentNode) currentNode.addEndIndex(getOriginalIndex(closeIndex + 1, crlfPositions));
 			textData = "";
 			i = closeIndex;
 		} else if (c1 === 63) {
@@ -14069,8 +14136,9 @@ var parseXml = function(xmlData) {
 				const childNode = new XmlNode(tagData.tagName);
 				childNode.add(options.textNodeName, "");
 				if (tagData.tagName !== tagData.tagExp && tagData.attrExpPresent && options.ignoreAttributes !== true) childNode[":@"] = attsMap;
-				this.addChild(currentNode, childNode, this.readonlyMatcher, i);
-				if (options.captureMetaData) currentNode.addEndIndex(tagData.closeIndex + 2);
+				const startIndex = options.captureMetaData ? getOriginalIndex(i, crlfPositions) : i;
+				this.addChild(currentNode, childNode, this.readonlyMatcher, startIndex);
+				if (options.captureMetaData) currentNode.addEndIndex(getOriginalIndex(tagData.closeIndex + 2, crlfPositions));
 			}
 			i = tagData.closeIndex + 1;
 		} else if (c1 === 33 && xmlData.charCodeAt(i + 2) === 45 && xmlData.charCodeAt(i + 3) === 45) {
@@ -14135,7 +14203,7 @@ var parseXml = function(xmlData) {
 				if (prefixedAttrs) extractRawAttributes(prefixedAttrs, options);
 			}
 			if (tagName !== xmlObj.tagname) this.isCurrentNodeStopNode = this.isItStopNode();
-			const startIndex = i;
+			const startIndex = options.captureMetaData ? getOriginalIndex(i, crlfPositions) : i;
 			if (this.isCurrentNodeStopNode) {
 				let tagContent = "";
 				if (isSelfClosing) i = result.closeIndex;
@@ -14152,21 +14220,21 @@ var parseXml = function(xmlData) {
 				this.matcher.pop();
 				this.isCurrentNodeStopNode = false;
 				this.addChild(currentNode, childNode, this.readonlyMatcher, startIndex);
-				if (options.captureMetaData) currentNode.addEndIndex(i + 1);
+				if (options.captureMetaData) currentNode.addEndIndex(getOriginalIndex(i + 1, crlfPositions));
 			} else {
 				if (isSelfClosing) {
 					({tagName, tagExp} = transformTagName(options.transformTagName, tagName, tagExp, options));
 					const childNode = new XmlNode(tagName);
 					if (prefixedAttrs) childNode[":@"] = prefixedAttrs;
 					this.addChild(currentNode, childNode, this.readonlyMatcher, startIndex);
-					if (options.captureMetaData) currentNode.addEndIndex(closeIndex + 1);
+					if (options.captureMetaData) currentNode.addEndIndex(getOriginalIndex(closeIndex + 1, crlfPositions));
 					this.matcher.pop();
 					this.isCurrentNodeStopNode = false;
 				} else if (options.unpairedTagsSet.has(tagName)) {
 					const childNode = new XmlNode(tagName);
 					if (prefixedAttrs) childNode[":@"] = prefixedAttrs;
 					this.addChild(currentNode, childNode, this.readonlyMatcher, startIndex);
-					if (options.captureMetaData) currentNode.addEndIndex(result.closeIndex + 1);
+					if (options.captureMetaData) currentNode.addEndIndex(getOriginalIndex(result.closeIndex + 1, crlfPositions));
 					this.matcher.pop();
 					this.isCurrentNodeStopNode = false;
 					i = result.closeIndex;
@@ -14186,6 +14254,16 @@ var parseXml = function(xmlData) {
 	} else textData += xmlData[i];
 	return xmlObj.child;
 };
+function getOriginalIndex(index, crlfPositions) {
+	let low = 0;
+	let high = crlfPositions.length;
+	while (low < high) {
+		const middle = Math.floor((low + high) / 2);
+		if (crlfPositions[middle] < index) low = middle + 1;
+		else high = middle;
+	}
+	return index + low;
+}
 function addChild(currentNode, childNode, matcher, startIndex) {
 	if (!this.options.captureMetaData) startIndex = void 0;
 	const jPathOrMatcher = this.options.jPath ? matcher.toString() : matcher;
@@ -14237,7 +14315,6 @@ function isItStopNode() {
 * @returns 
 */
 function tagExpWithClosingIndex(xmlData, i, closingChar = ">") {
-	let attrBoundary = 0;
 	const len = xmlData.length;
 	const closeCode0 = closingChar.charCodeAt(0);
 	const closeCode1 = closingChar.length > 1 ? closingChar.charCodeAt(1) : -1;
@@ -14245,10 +14322,10 @@ function tagExpWithClosingIndex(xmlData, i, closingChar = ">") {
 	let segmentStart = i;
 	for (let index = i; index < len; index++) {
 		const code = xmlData.charCodeAt(index);
-		if (attrBoundary) {
-			if (code === attrBoundary) attrBoundary = 0;
-		} else if (code === 34 || code === 39) attrBoundary = code;
-		else if (code === closeCode0) {
+		if (code === 34 || code === 39) {
+			index = xmlData.indexOf(xmlData[index], index + 1);
+			if (index === -1) return;
+		} else if (code === closeCode0) {
 			if (closeCode1 !== -1) {
 				if (xmlData.charCodeAt(index + 1) === closeCode1) {
 					result += xmlData.substring(segmentStart, index);
@@ -14264,7 +14341,7 @@ function tagExpWithClosingIndex(xmlData, i, closingChar = ">") {
 					index
 				};
 			}
-		} else if (code === 9 && !attrBoundary) {
+		} else if (code === 9) {
 			result += xmlData.substring(segmentStart, index) + " ";
 			segmentStart = index + 1;
 		}
@@ -14317,6 +14394,8 @@ function readTagExp(xmlData, i, removeNSPrefix, closingChar = ">") {
 function readStopNodeData(xmlData, tagName, i) {
 	const startIndex = i;
 	let openTagCount = 1;
+	let lenient = false;
+	let nextGt = -1;
 	const xmllen = xmlData.length;
 	for (; i < xmllen; i++) if (xmlData[i] === "<") {
 		const c1 = xmlData.charCodeAt(i + 1);
@@ -14334,10 +14413,23 @@ function readStopNodeData(xmlData, tagName, i) {
 		else if (c1 === 33 && xmlData.charCodeAt(i + 2) === 45 && xmlData.charCodeAt(i + 3) === 45) i = findClosingIndex(xmlData, "-->", i + 3, "StopNode is not closed.");
 		else if (c1 === 33 && xmlData.charCodeAt(i + 2) === 91) i = findClosingIndex(xmlData, "]]>", i, "StopNode is not closed.") - 2;
 		else {
-			const tagData = readTagExp(xmlData, i, false);
+			const tagData = lenient ? void 0 : readTagExp(xmlData, i, false);
 			if (tagData) {
-				if ((tagData && tagData.tagName) === tagName && tagData.tagExp[tagData.tagExp.length - 1] !== "/") openTagCount++;
+				if (tagData.tagName === tagName && tagData.tagExp[tagData.tagExp.length - 1] !== "/") openTagCount++;
 				i = tagData.closeIndex;
+			} else {
+				lenient = true;
+				if (nextGt < i) {
+					nextGt = xmlData.indexOf(">", i);
+					if (nextGt === -1) return;
+				}
+				const nextLt = xmlData.indexOf("<", i + 1);
+				if (nextLt === -1 || nextLt > nextGt) {
+					const exp = xmlData.substring(i + 1, nextGt);
+					const sep = exp.search(/\s/);
+					if ((sep === -1 ? exp : exp.substring(0, sep)) === tagName && exp[exp.length - 1] !== "/") openTagCount++;
+					i = nextGt;
+				}
 			}
 		}
 	}
@@ -14534,6 +14626,30 @@ function safeCdata(val) {
 function escapeAttribute(val) {
 	return valToStr(val).replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
+/**
+* Resolve a tag or attribute name through sanitizeName if configured.
+* Validation via xml-naming's qName is performed first; the sanitizeName
+* callback is invoked only when the name is invalid. If sanitizeName is
+* false (default), no validation occurs and the name is used as-is.
+*
+* @param {string}  name        - raw name from the JS object
+* @param {boolean} isAttribute - true when resolving an attribute name
+* @param {object}  options
+* @param {Matcher} matcher     - current matcher state (readonly from callback perspective)
+* @param {function} qNameValidator - function to validate tag names
+*/
+function resolveName(name, isAttribute, options, matcher, validator) {
+	if (!options.sanitizeName) return name;
+	const isPI = !isAttribute && name[0] === "?";
+	const bare = isPI ? name.slice(1) : name;
+	if (validator(bare)) return name;
+	const result = options.sanitizeName(bare, {
+		isAttribute,
+		matcher: matcher.readOnly()
+	});
+	if (typeof result !== "string" || !validator(result)) throw new Error(`sanitizeName returned an invalid XML name for "${bare}"`);
+	return isPI ? "?" + result : result;
+}
 // node_modules/fast-xml-builder/src/orderedJs2Xml.js
 var EOL$2 = "\n";
 /**
@@ -14555,26 +14671,6 @@ function detectXmlVersionFromArray(jArray, options) {
 		}
 	}
 	return "1.0";
-}
-/**
-* Resolve a tag or attribute name through sanitizeName if configured.
-* Validation via xml-naming's qName is performed first; the sanitizeName
-* callback is invoked only when the name is invalid. If sanitizeName is
-* false (default), no validation occurs and the name is used as-is.
-*
-* @param {string}  name        - raw name from the JS object
-* @param {boolean} isAttribute - true when resolving an attribute name
-* @param {object}  options
-* @param {Matcher} matcher     - current matcher state (readonly from callback perspective)
-* @param {function} qNameValidator - function to validate tag names
-*/
-function resolveTagName$1(name, isAttribute, options, matcher, qNameValidator) {
-	if (!options.sanitizeName) return name;
-	if (qNameValidator(name)) return name;
-	return options.sanitizeName(name, {
-		isAttribute,
-		matcher: matcher.readOnly()
-	});
 }
 /**
 * @param {array} jArray
@@ -14610,7 +14706,7 @@ function arrToStr(arr, options, indentation, matcher, stopNodeExpressions, qName
 		const tagObj = arr[i];
 		const rawTagName = propName(tagObj);
 		if (rawTagName === void 0) continue;
-		const tagName = rawTagName === options.textNodeName || rawTagName === options.cdataPropName || rawTagName === options.commentPropName || rawTagName[0] === "?" ? rawTagName : resolveTagName$1(rawTagName, false, options, matcher, qNameValidator);
+		const tagName = rawTagName === options.textNodeName || rawTagName === options.cdataPropName || rawTagName === options.commentPropName ? rawTagName : resolveName(rawTagName, false, options, matcher, qNameValidator);
 		const attrValues = extractAttributeValues(tagObj[":@"], options);
 		matcher.push(tagName, attrValues);
 		const isStopNode = checkStopNode(matcher, stopNodeExpressions);
@@ -14652,7 +14748,7 @@ function arrToStr(arr, options, indentation, matcher, stopNodeExpressions, qName
 		if (newIdentation !== "") newIdentation += options.indentBy;
 		const tagStart = indentation + `<${tagName}${attr_to_str(tagObj[":@"], options, isStopNode, matcher, qNameValidator)}`;
 		let tagValue;
-		if (isStopNode) tagValue = getRawContent(tagObj[rawTagName], options);
+		if (isStopNode) tagValue = getRawContent(tagObj[rawTagName], options, matcher.getDepth());
 		else tagValue = arrToStr(tagObj[rawTagName], options, newIdentation, matcher, stopNodeExpressions, qNameValidator);
 		if (options.unpairedTags.indexOf(tagName) !== -1) {
 			if (options.suppressUnpairedNode) xmlStr += tagStart + ">";
@@ -14690,7 +14786,8 @@ function extractAttributeValues(attrMap, options) {
 * Extract raw content from a stopNode without any processing
 * This preserves the content exactly as-is, including special characters
 */
-function getRawContent(arr, options) {
+function getRawContent(arr, options, depth = 0) {
+	if (options.maxNestedTags && depth > options.maxNestedTags) throw new Error("Maximum nested tags exceeded");
 	if (!Array.isArray(arr)) {
 		if (arr !== void 0 && arr !== null) return valToStr(arr);
 		return "";
@@ -14705,7 +14802,7 @@ function getRawContent(arr, options) {
 		else if (tagName && tagName[0] === "?") continue;
 		else if (tagName) {
 			const attStr = attr_to_str_raw(item[":@"], options);
-			const nestedContent = getRawContent(item[tagName], options);
+			const nestedContent = getRawContent(item[tagName], options, depth + 1);
 			if (!nestedContent || nestedContent.length === 0) content += `<${tagName}${attStr}/>`;
 			else content += `<${tagName}${attStr}>${nestedContent}</${tagName}>`;
 		}
@@ -14742,7 +14839,7 @@ function attr_to_str(attrMap, options, isStopNode, matcher, qNameValidator) {
 	if (attrMap && !options.ignoreAttributes) for (let attr in attrMap) {
 		if (!Object.prototype.hasOwnProperty.call(attrMap, attr)) continue;
 		const cleanAttrName = attr.substr(options.attributeNamePrefix.length);
-		const resolvedAttrName = isStopNode ? cleanAttrName : resolveTagName$1(cleanAttrName, true, options, matcher, qNameValidator);
+		const resolvedAttrName = isStopNode ? cleanAttrName : resolveName(cleanAttrName, true, options, matcher, qNameValidator);
 		let attrVal;
 		if (isStopNode) attrVal = attrMap[attr];
 		else {
@@ -14877,26 +14974,6 @@ function detectXmlVersionFromObj(jObj, options) {
 	}
 	return "1.0";
 }
-/**
-* Resolve a tag or attribute name through sanitizeName if configured.
-* Validation via xml-naming's qName is performed first; the sanitizeName
-* callback is invoked only when the name is invalid. If sanitizeName is
-* false (default), no validation occurs and the name is used as-is.
-*
-* @param {string}  name        - raw name from the JS object
-* @param {boolean} isAttribute - true when resolving an attribute name
-* @param {object}  options
-* @param {Matcher} matcher     - current matcher state (readonly from callback perspective)
-* @param {function} qNameValidator - function to validate tag names
-*/
-function resolveTagName(name, isAttribute, options, matcher, qNameValidator) {
-	if (!options.sanitizeName) return name;
-	if (qNameValidator(name)) return name;
-	return options.sanitizeName(name, {
-		isAttribute,
-		matcher: matcher.readOnly()
-	});
-}
 Builder.prototype.build = function(jObj) {
 	if (this.options.preserveOrder) return toXml(jObj, this.options);
 	else {
@@ -14914,7 +14991,7 @@ Builder.prototype.j2x = function(jObj, level, matcher, qNameValidator) {
 	const isCurrentStopNode = this.checkStopNode(matcher);
 	for (let key in jObj) {
 		if (!Object.prototype.hasOwnProperty.call(jObj, key)) continue;
-		const resolvedKey = key === this.options.textNodeName || key === this.options.cdataPropName || key === this.options.commentPropName || this.options.attributesGroupName && key === this.options.attributesGroupName || this.isAttribute(key) || key[0] === "?" ? key : resolveTagName(key, false, this.options, matcher, qNameValidator);
+		const resolvedKey = key === this.options.textNodeName || key === this.options.cdataPropName || key === this.options.commentPropName || this.options.attributesGroupName && key === this.options.attributesGroupName || this.isAttribute(key) ? key : resolveName(key, false, this.options, matcher, qNameValidator);
 		if (typeof jObj[key] === "undefined") {
 			if (this.isAttribute(key)) val += "";
 		} else if (jObj[key] === null) {
@@ -14926,7 +15003,7 @@ Builder.prototype.j2x = function(jObj, level, matcher, qNameValidator) {
 		else if (typeof jObj[key] !== "object") {
 			const attr = this.isAttribute(key);
 			if (attr && !this.ignoreAttributesFn(attr, jPath)) {
-				const resolvedAttr = resolveTagName(attr, true, this.options, matcher, qNameValidator);
+				const resolvedAttr = resolveName(attr, true, this.options, matcher, qNameValidator);
 				attrStr += this.buildAttrPairStr(resolvedAttr, valToStr(jObj[key]), isCurrentStopNode);
 			} else if (!attr) {
 				if (key === this.options.textNodeName) {
@@ -14982,7 +15059,7 @@ Builder.prototype.j2x = function(jObj, level, matcher, qNameValidator) {
 			const Ks = Object.keys(jObj[key]);
 			const L = Ks.length;
 			for (let j = 0; j < L; j++) {
-				const resolvedAttr = resolveTagName(Ks[j], true, this.options, matcher, qNameValidator);
+				const resolvedAttr = resolveName(Ks[j], true, this.options, matcher, qNameValidator);
 				attrStr += this.buildAttrPairStr(resolvedAttr, valToStr(jObj[key][Ks[j]]), isCurrentStopNode);
 			}
 		} else val += this.processTextOrObjNode(jObj[key], resolvedKey, level, matcher, qNameValidator);
@@ -15004,7 +15081,7 @@ function processTextOrObjNode(object, key, level, matcher, qNameValidator) {
 	const attrValues = this.extractAttributes(object);
 	matcher.push(key, attrValues);
 	if (this.checkStopNode(matcher)) {
-		const rawContent = this.buildRawContent(object);
+		const rawContent = this.buildRawContent(object, matcher.getDepth());
 		const attrStr = this.buildAttributesForStopNode(object);
 		matcher.pop();
 		return this.buildObjectNode(rawContent, key, attrStr, level);
@@ -15037,7 +15114,8 @@ Builder.prototype.extractAttributes = function(obj) {
 	}
 	return hasAttrs ? attrValues : null;
 };
-Builder.prototype.buildRawContent = function(obj) {
+Builder.prototype.buildRawContent = function(obj, depth = 0) {
+	if (this.options.maxNestedTags && depth >= this.options.maxNestedTags) throw new Error("Maximum nested tags exceeded");
 	if (typeof obj === "string") return obj;
 	if (typeof obj !== "object" || obj === null) return String(obj);
 	if (obj[this.options.textNodeName] !== void 0) return obj[this.options.textNodeName];
@@ -15051,13 +15129,13 @@ Builder.prototype.buildRawContent = function(obj) {
 		else if (Array.isArray(value)) {
 			for (let item of value) if (typeof item === "string" || typeof item === "number") content += `<${key}>${item}</${key}>`;
 			else if (typeof item === "object" && item !== null) {
-				const nestedContent = this.buildRawContent(item);
+				const nestedContent = this.buildRawContent(item, depth + 1);
 				const nestedAttrs = this.buildAttributesForStopNode(item);
 				if (nestedContent === "") content += `<${key}${nestedAttrs}/>`;
 				else content += `<${key}${nestedAttrs}>${nestedContent}</${key}>`;
 			}
 		} else if (typeof value === "object" && value !== null) {
-			const nestedContent = this.buildRawContent(value);
+			const nestedContent = this.buildRawContent(value, depth + 1);
 			const nestedAttrs = this.buildAttributesForStopNode(value);
 			if (nestedContent === "") content += `<${key}${nestedAttrs}/>`;
 			else content += `<${key}${nestedAttrs}>${nestedContent}</${key}>`;

@@ -1,17 +1,17 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { parse } from 'yaml'
 import { DEFAULTS, readInputs } from '../src/inputs.js'
 
 function actionYmlDefaults(): Record<string, string> {
-  const defaults: Record<string, string> = {}
-  let input = ''
-  for (const line of readFileSync('action.yml', 'utf8').split('\n')) {
-    const name = line.match(/^ {2}([a-z-]+):\s*$/)
-    if (name) input = name[1]
-    const value = line.match(/^ {4}default: (.*)$/)
-    if (value && input) defaults[input] = value[1].replace(/^'(.*)'$/, '$1')
+  const { inputs } = parse(readFileSync('action.yml', 'utf8')) as {
+    inputs: Record<string, { default?: string }>
   }
-  return defaults
+  return Object.fromEntries(
+    Object.entries(inputs).flatMap(([name, { default: value }]) =>
+      value === undefined ? [] : [[name, value]]
+    )
+  )
 }
 
 describe('readInputs', () => {

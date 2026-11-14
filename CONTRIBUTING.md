@@ -9,10 +9,11 @@ whose new code has less than 80% coverage.
 Three workflows besides CI check the action:
 
 - [![Fixtures](https://github.com/galois-groups/sonar-fork-analysis/actions/workflows/fixtures.yml/badge.svg)](https://github.com/galois-groups/sonar-fork-analysis/actions/workflows/fixtures.yml)
-  runs the action on sample Maven, Gradle, npm and pnpm projects. It analyses
-  each one directly and through the fork path and compares the results. It also
-  checks what differs on Windows and macOS: the Maven and Gradle wrappers and
-  the scanner the action downloads.
+  runs the action on sample Maven, Gradle, npm and pnpm projects. A fifth one,
+  `infra`, has no build and holds a sample of every other file type the action
+  analyses. Fixtures analyses each one directly and through the fork path and
+  compares the results. It also checks what differs on Windows and macOS: the
+  Maven and Gradle wrappers and the scanner the action downloads.
 - [![Scanner and engines](https://github.com/galois-groups/sonar-fork-analysis/actions/workflows/scanner.yml/badge.svg)](https://github.com/galois-groups/sonar-fork-analysis/actions/workflows/scanner.yml)
   checks what the action assumes against the real scanner and the engines
   SonarCloud and SonarQube serve. Sonar updates the engines on its own schedule,
@@ -37,9 +38,9 @@ unless a workflow sets `scanner-version`. When the weekly run of Scanner and
 engines reports a newer release, run `npm run scanner:update`. It checks the new
 release's signature and makes it the default. The old default stays in the list.
 The workflows list the versions too: add the new one to the matrix in
-`scanner.yml` and the old default to the one in `fixtures.yml`. Then run
-`npm run bundle` and open a pull request. Its checks run the real scanner and
-the fixtures with every version in the list.
+`scanner.yml` and the old default to the one in `fixtures.yml`. `npm test` fails
+until the lists match. Then run `npm run bundle` and open a pull request. Its
+checks run the real scanner and the fixtures with every version in the list.
 
 The weekly run also reports a newer patch of an older tested version, such as
 8.1.1 for 8.1.0. Replace that version by hand in `TESTED_VERSIONS` and in both

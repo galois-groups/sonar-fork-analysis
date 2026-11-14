@@ -1,20 +1,26 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { exec } from '../__fixtures__/exec.js'
 import { answer, request } from '../__fixtures__/http.js'
 
+vi.doMock('@actions/exec', () => ({ exec }))
 vi.doMock('../src/http.js', () => ({ request }))
 
 const {
+  OFFLINE_PROXY,
   TESTED_LANGUAGES,
   definitions,
-  languagesHost,
+  scannerServer,
   serverLanguages,
   untestedLanguages
 } = await import('../src/languages.js')
 
 afterEach(() => {
   request.mockReset()
+  exec.mockReset()
   vi.useRealTimers()
-  delete process.env.SONAR_HOST_URL
 })
 
 describe('definitions', () => {
@@ -39,25 +45,67 @@ describe('definitions', () => {
   })
 })
 
-describe('languagesHost', () => {
-  it('asks the server the scanner talks to', () => {
-    expect(languagesHost('', [])).toBe('https://sonarcloud.io')
-    expect(languagesHost('', ['-Dsonar.region=us'])).toBe(
+describe('scannerServer', () => {
+  const options = { cwd: '/run', env: { PATH: '/bin' } }
+  const dump = (): string =>
+    join(mkdtempSync(join(tmpdir(), 'server-')), 'server.properties')
+
+  it('reads the server from what the scanner writes in simulation mode', async () => {
+    const file = dump()
+    exec.mockImplementation(async () => {
+      writeFileSync(
+        file,
+        'env.SONAR_TOKEN=secret\nsonar.host.url=https\\://sonarqube.us/\n'
+      )
+      return 0
+    })
+
+    // The analysis runs with the same arguments afterwards.
+    const args = Object.freeze(['-Dsonar.region=us'])
+
+    expect(await scannerServer('/bin/sonar-scanner', args, options, file)).toBe(
       'https://sonarqube.us'
     )
-    process.env.SONAR_HOST_URL = 'https://env.example.com/'
-    expect(languagesHost('', [])).toBe('https://env.example.com')
-    expect(languagesHost('https://input.example.com', [])).toBe(
-      'https://input.example.com'
+    expect(exec).toHaveBeenCalledWith(
+      '/bin/sonar-scanner',
+      [
+        '-Dsonar.region=us',
+        ...OFFLINE_PROXY,
+        `-Dsonar.scanner.internal.dumpToFile=${file}`
+      ],
+      expect.objectContaining({ ...options, ignoreReturnCode: true })
     )
-    // The scanner takes the last value it reads for a key.
-    expect(
-      languagesHost('https://input.example.com', [
-        '-Dsonar.host.url=https://first.example.com',
-        '-D',
-        'sonar.host.url=https://last.example.com//'
-      ])
-    ).toBe('https://last.example.com')
+    expect(existsSync(file)).toBe(false)
+  })
+
+  it("stops with the scanner's errors when it fails", async () => {
+    const file = dump()
+    exec.mockImplementation(async (_tool, _args, execOptions) => {
+      writeFileSync(file, 'sonar.host.url=https://sonarcloud.io\n')
+      execOptions?.listeners?.stdout?.(
+        Buffer.from("00:00:00.000 ERROR Invalid region 'xx'.\n")
+      )
+      return 1
+    })
+
+    await expect(
+      scannerServer('/bin/sonar-scanner', [], options, file)
+    ).rejects.toMatchObject({
+      message:
+        'The Sonar scanner failed with exit code 1 when asked which server it uses',
+      lines: ["00:00:00.000 ERROR Invalid region 'xx'."]
+    })
+    expect(existsSync(file)).toBe(false)
+  })
+
+  it('stops when the scanner names no server', async () => {
+    exec.mockResolvedValue(0)
+
+    await expect(
+      scannerServer('/bin/sonar-scanner', [], options, dump())
+    ).rejects.toThrow(
+      "The Sonar scanner didn't name its server in simulation mode"
+    )
   })
 })
 

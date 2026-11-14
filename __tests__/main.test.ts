@@ -18,7 +18,6 @@ import * as core from '../__fixtures__/core.js'
 import { linux } from '../__fixtures__/platform.js'
 import { exec, getExecOutput } from '../__fixtures__/exec.js'
 import { answer, request } from '../__fixtures__/http.js'
-import { NO_FILE } from '../src/languages.js'
 
 // Mocks must be declared before the module under test is imported.
 vi.doMock('@actions/core', () => core)
@@ -34,12 +33,18 @@ vi.doMock('../src/scanner.js', async (importOriginal) => ({
 vi.doMock('@actions/artifact', () => artifact)
 // The server's languages, which the analysis asks for.
 const serverLanguages = vi.fn(async () => ['java', 'ts', 'py', 'rust'])
+// The server the scanner names in simulation mode.
+const scannerServer = vi.fn<typeof import('../src/languages.js').scannerServer>(
+  async () => 'https://sonarcloud.io'
+)
 vi.doMock('../src/languages.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/languages.js')>()),
+  scannerServer,
   serverLanguages
 }))
 
 const { run } = await import('../src/main.js')
+const { NO_FILE } = await import('../src/languages.js')
 const { escaped } = await import('../src/summary.js')
 const { DEFAULT_VERSION } = await import('../src/scanner.js')
 
@@ -1218,6 +1223,57 @@ describe('run in analyze mode', () => {
     // Every warning of the step, not only the artifact's.
     expect(core.warning).toHaveBeenCalledTimes(2)
     expect(summary()).toMatch(/\n\n2 warnings: see the annotations\.\n$/)
+  })
+
+  it('asks the scanner which server it uses, with the analysis settings', async () => {
+    prepared({ 'sonar.inclusions': 'src/**' })
+    inputs['build-arguments'] = '-Dsonar.region=us'
+    let settingsThen = ''
+    let commandsStopped = false
+    scannerServer.mockImplementationOnce(async (_scanner, args) => {
+      const messages = core.info.mock.calls.map(([message]) => message)
+      const stop = messages.findLast((message) =>
+        message.startsWith('::stop-commands::')
+      )
+      commandsStopped =
+        stop !== undefined &&
+        !messages.includes(`::${stop.replace('::stop-commands::', '')}::`)
+      settingsThen = readFileSync(
+        args[0].replace('-Dproject.settings=', ''),
+        'utf8'
+      )
+      return 'https://sonarqube.us'
+    })
+
+    await run()
+
+    const [scanner, args, options] = scannerServer.mock.calls[0]
+    const analysis = exec.mock.calls[0]
+    expect(scanner).toBe(analysis[0])
+    expect(args).toEqual(analysis[1])
+    expect(options.cwd).toBe(analysis[2]!.cwd)
+    expect(options.env.SONAR_TOKEN).toBeUndefined()
+    // The scanner prints what the artifact holds there too.
+    expect(commandsStopped).toBe(true)
+    expect(settingsThen).toContain('sonar.inclusions=src/**\n')
+    expect(settingsThen).toContain('sonar.projectKey=')
+    expect(settingsThen).not.toContain('sonar.lang.patterns.')
+    expect(serverLanguages).toHaveBeenCalledWith('https://sonarqube.us', TOKEN)
+  })
+
+  it('analyses nothing when the scanner names no server', async () => {
+    prepared({})
+    scannerServer.mockRejectedValueOnce(
+      new Error("The Sonar scanner didn't name its server in simulation mode")
+    )
+
+    await run()
+
+    expect(serverLanguages).not.toHaveBeenCalled()
+    expect(exec).not.toHaveBeenCalled()
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringContaining("didn't name its server")
+    )
   })
 
   it("analyses nothing without the server's languages", async () => {

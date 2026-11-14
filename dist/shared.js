@@ -17910,6 +17910,21 @@ async function retry(action, policy = CHECKOUT_POLICY) {
 	}
 	return action();
 }
+// src/secrets.ts
+var secrets = /* @__PURE__ */ new Set();
+function secret(value) {
+	if (!value) return;
+	secrets.add(value);
+	setSecret(value);
+}
+function redacted(text) {
+	let out = text;
+	for (const value of [...secrets].sort((a, b) => b.length - a.length)) out = out.replaceAll(value, "***");
+	return out;
+}
+function forgetSecrets() {
+	secrets.clear();
+}
 // src/real-path.ts
 var realPath = realpathSync.native;
 function present(path) {
@@ -17942,21 +17957,6 @@ var RUNNER_FILES = /* @__PURE__ */ new Set([
 ]);
 function toolEnvironment() {
 	return Object.fromEntries(Object.entries(jobEnvironment()).filter(([name]) => !name.startsWith("ACTIONS_") && !RUNNER_FILES.has(name)));
-}
-// src/secrets.ts
-var secrets = /* @__PURE__ */ new Set();
-function secret(value) {
-	if (!value) return;
-	secrets.add(value);
-	setSecret(value);
-}
-function redacted(text) {
-	let out = text;
-	for (const value of [...secrets].sort((a, b) => b.length - a.length)) out = out.replaceAll(value, "***");
-	return out;
-}
-function forgetSecrets() {
-	secrets.clear();
 }
 // src/warnings.ts
 var count = 0;
@@ -18266,4 +18266,4 @@ function readNote(saved) {
 		return;
 	}
 }
-export { setSecret as A, require_tunnel as B, error as C, isDebug as D, info as E, which as F, __toCommonJS as G, __esmMin as H, BearerCredentialHandler as I, __toESM as K, HttpClient as L, exec as M, mkdirP as N, notice as O, rmRF as P, HttpCodes as R, debug as S, getMultilineInput as T, __exportAll as U, __commonJSMin as V, __require as W, toolEnvironment as _, cleanUpCheckout as a, retry as b, resetWarnings as c, warnedLeftOut as d, warningCount as f, jobEnvironment as g, secret as h, trackedReporter as i, warning as j, setFailed as k, warn as l, redacted as m, reportInterrupted as n, prepareCheckout as o, forgetSecrets as p, runStatusTarget as r, verifyCheckout as s, noReporter as t, warnLeftOut as u, realLocation as v, getInput as w, request as x, realPath as y, require_undici as z };
+export { setSecret as A, require_tunnel as B, error as C, isDebug as D, info as E, which as F, __toCommonJS as G, __esmMin as H, BearerCredentialHandler as I, __toESM as K, HttpClient as L, exec as M, mkdirP as N, notice as O, rmRF as P, HttpCodes as R, debug as S, getMultilineInput as T, __exportAll as U, __commonJSMin as V, __require as W, forgetSecrets as _, cleanUpCheckout as a, retry as b, resetWarnings as c, warnedLeftOut as d, warningCount as f, realPath as g, realLocation as h, trackedReporter as i, warning as j, setFailed as k, warn as l, toolEnvironment as m, reportInterrupted as n, prepareCheckout as o, jobEnvironment as p, runStatusTarget as r, verifyCheckout as s, noReporter as t, warnLeftOut as u, redacted as v, getInput as w, request as x, secret as y, require_undici as z };

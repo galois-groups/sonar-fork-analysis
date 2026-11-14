@@ -385,12 +385,11 @@ Tested and untested mean the same as for
   itself. See
   [what the fork path carries](how-it-works.md#what-the-fork-path-carries).
 - On the fork path, the build collects its settings with Sonar's simulation
-  mode. Sonar doesn't document it, so a release could change it. See
+  mode. The Sonar workflow uses it too, to learn which server the scanner will
+  use. Sonar doesn't document it, so a release could change it. See
   [settings from the build](how-it-works.md#settings-from-the-build).
 - On self-hosted Windows runners whose workspace is on a RAM disk, the action
   can fail with `EISDIR` while it resolves paths. Use a regular disk.
-- The build's `sonar.region` isn't carried. For SonarQube Cloud's US region, add
-  `-Dsonar.region=us` to `build-arguments` in the Sonar workflow.
 - The action looks for `mvnw` and `gradlew` only in `working-directory`, not in
   parent directories.
 - On platforms where Sonar ships no scanner with Java bundled, the scanner needs

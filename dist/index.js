@@ -1,4 +1,4 @@
-import { A as setSecret, B as require_tunnel, C as error, D as isDebug, E as info, F as which, G as __toCommonJS, H as __esmMin, I as BearerCredentialHandler, K as __toESM, L as HttpClient, M as exec, N as mkdirP, O as notice, P as rmRF, R as HttpCodes, S as debug, T as getMultilineInput, U as __exportAll, V as __commonJSMin, W as __require, _ as toolEnvironment, b as retry$2, c as resetWarnings, d as warnedLeftOut, f as warningCount, g as jobEnvironment, h as secret, i as trackedReporter, j as warning, k as setFailed, l as warn, m as redacted, o as prepareCheckout, p as forgetSecrets, r as runStatusTarget, s as verifyCheckout, t as noReporter, u as warnLeftOut, v as realLocation, w as getInput, x as request$1, y as realPath, z as require_undici } from "./shared.js";
+import { A as setSecret, B as require_tunnel, C as error, D as isDebug, E as info, F as which, G as __toCommonJS, H as __esmMin, I as BearerCredentialHandler, K as __toESM, L as HttpClient, M as exec, N as mkdirP, O as notice, P as rmRF, R as HttpCodes, S as debug, T as getMultilineInput, U as __exportAll, V as __commonJSMin, W as __require, _ as forgetSecrets, b as retry$2, c as resetWarnings, d as warnedLeftOut, f as warningCount, g as realPath, h as realLocation, i as trackedReporter, j as warning, k as setFailed, l as warn, m as toolEnvironment, o as prepareCheckout, p as jobEnvironment, r as runStatusTarget, s as verifyCheckout, t as noReporter, u as warnLeftOut, v as redacted, w as getInput, x as request$1, y as secret, z as require_undici } from "./shared.js";
 import os, { EOL } from "os";
 import * as crypto$3 from "crypto";
 import * as fs$2 from "fs";
@@ -77703,6 +77703,154 @@ If the error persists, please check whether Actions and API requests are operati
 	}
 };
 new DefaultArtifactClient();
+// src/properties.ts
+function parseProperties(text) {
+	const properties = /* @__PURE__ */ new Map();
+	const lines = text.split(/\r\n|\r|\n/);
+	let index = 0;
+	const next = () => lines[index++]?.replace(/^[ \t\f]+/, "");
+	for (let first = next(); first !== void 0; first = next()) {
+		if (first === "" || first.startsWith("#") || first.startsWith("!")) continue;
+		let line = first;
+		while (/(?:^|[^\\])(?:\\\\)*\\$/.test(line)) {
+			const following = next();
+			if (following === void 0) break;
+			line = line.slice(0, -1) + following;
+		}
+		const [key, value] = splitEntry(line);
+		properties.set(unescape(key), unescape(value));
+	}
+	return properties;
+}
+function splitEntry(line) {
+	let i = 0;
+	while (i < line.length) {
+		const c = line[i];
+		if (c === "\\") {
+			i += 2;
+			continue;
+		}
+		if (c === "=" || c === ":" || c === " " || c === "	" || c === "\f") break;
+		i++;
+	}
+	const key = line.slice(0, i);
+	let rest = line.slice(i).replace(/^[ \t\f]+/, "");
+	if (rest.startsWith("=") || rest.startsWith(":")) rest = rest.slice(1).replace(/^[ \t\f]+/, "");
+	return [key, rest];
+}
+var ESCAPES = {
+	t: "	",
+	n: "\n",
+	r: "\r",
+	f: "\f"
+};
+function unescape(text) {
+	return text.replace(/\\(u[0-9a-fA-F]{4}|.)/g, (_, escaped) => escaped.length === 5 ? String.fromCodePoint(Number.parseInt(escaped.slice(1), 16)) : ESCAPES[escaped] ?? escaped);
+}
+function parseNpmDump(text) {
+	const fail = (reason) => {
+		throw new Error(`The npm scanner's dump is not in the expected format: ${reason}`);
+	};
+	let outer;
+	let inner;
+	try {
+		outer = JSON.parse(text);
+	} catch {
+		fail("not JSON");
+	}
+	const json = outer?.propertiesJSON;
+	if (typeof json !== "string") fail("no propertiesJSON string");
+	try {
+		inner = JSON.parse(json);
+	} catch {
+		fail("propertiesJSON is not JSON");
+	}
+	const list = inner?.scannerProperties;
+	if (!Array.isArray(list)) fail("no scannerProperties list");
+	const properties = /* @__PURE__ */ new Map();
+	for (const entry of list) {
+		const { key, value } = entry ?? {};
+		if (typeof key !== "string" || typeof value !== "string") fail("a setting that is not a key and a string value");
+		if (properties.has(key)) fail(`${key} appears twice`);
+		properties.set(key, value);
+	}
+	return properties;
+}
+// src/tool-errors.ts
+var LINES = 20;
+var WIDTH = 300;
+var KEPT = 1e3;
+var ErrorLines = class {
+	tool;
+	kept = [];
+	streams = [];
+	stdout = this.listener();
+	stderr = this.listener();
+	constructor(tool) {
+		this.tool = tool;
+	}
+	end() {
+		for (const stream of this.streams) {
+			const last = (stream.rest + stream.decoder.end()).slice(0, KEPT);
+			stream.rest = "";
+			this.add(last, stream);
+		}
+		return [...this.kept];
+	}
+	listener() {
+		const stream = {
+			decoder: new StringDecoder("utf8"),
+			rest: "",
+			inside: false
+		};
+		this.streams.push(stream);
+		return (data) => {
+			const parts = stream.decoder.write(data).split("\n");
+			const last = parts.pop() ?? "";
+			for (const part of parts) {
+				this.add(stream.rest + part.slice(0, KEPT), stream);
+				stream.rest = "";
+			}
+			stream.rest = (stream.rest + last).slice(0, KEPT);
+		};
+	}
+	add(line, stream) {
+		const plain = line.trimEnd();
+		if (plain === "" || !this.wanted(plain, stream)) return;
+		const whole = redacted(plain);
+		const cut = whole.length > WIDTH ? `${whole.slice(0, WIDTH)}…` : whole;
+		if (this.tool === "maven" || this.tool === "gradle") {
+			if (this.kept.length < LINES) this.kept.push(cut);
+		} else {
+			this.kept.push(cut);
+			if (this.kept.length > LINES) this.kept.shift();
+		}
+	}
+	wanted(line, stream) {
+		switch (this.tool) {
+			case "maven":
+				if (line.startsWith("[ERROR] Failed to execute goal ")) stream.inside = true;
+				if (!line.startsWith("[ERROR] ") || line.startsWith("[ERROR] -> ")) stream.inside = false;
+				return stream.inside;
+			case "gradle":
+				if (line === "* What went wrong:") {
+					stream.inside = true;
+					return false;
+				}
+				if (line.startsWith("* ")) stream.inside = false;
+				return stream.inside;
+			case "scanner": return /^\d{2}:\d{2}:\d{2}\.\d{3} ERROR /.test(line);
+			case "npm": return line.startsWith("[ERROR] ");
+		}
+	}
+};
+var ToolFailure = class extends Error {
+	lines;
+	constructor(message, lines) {
+		super(message);
+		this.lines = lines;
+	}
+};
 // src/languages.ts
 var TESTED_LANGUAGES = [
 	"java",
@@ -77756,12 +77904,30 @@ function definitions(buildArguments) {
 	}
 	return defined;
 }
-function languagesHost(hostUrl, buildArguments) {
-	const defined = definitions(buildArguments);
-	const argument = (key) => defined.findLast(([name]) => name === key)?.[1];
-	let host = argument("sonar.host.url") || hostUrl || process.env.SONAR_HOST_URL || (argument("sonar.region") === "us" ? "https://sonarqube.us" : "https://sonarcloud.io");
-	while (host.endsWith("/")) host = host.slice(0, -1);
-	return host;
+var OFFLINE_PROXY = ["-Dsonar.scanner.proxyHost=127.0.0.1", "-Dsonar.scanner.proxyPort=9"];
+async function scannerServer(scanner, args, options, dump) {
+	const errors = new ErrorLines("scanner");
+	try {
+		const exitCode = await exec(scanner, [
+			...args,
+			...OFFLINE_PROXY,
+			`-Dsonar.scanner.internal.dumpToFile=${dump}`
+		], {
+			...options,
+			ignoreReturnCode: true,
+			listeners: {
+				stdout: errors.stdout,
+				stderr: errors.stderr
+			}
+		});
+		if (exitCode !== 0) throw new ToolFailure(`The Sonar scanner failed with exit code ${exitCode} when asked which server it uses`, errors.end());
+		let host = existsSync$1(dump) ? parseProperties(readFileSync$1(dump, "utf8")).get("sonar.host.url") : void 0;
+		if (!host) throw new Error("The Sonar scanner didn't name its server in simulation mode, so the action can't tell which languages to turn off");
+		while (host.endsWith("/")) host = host.slice(0, -1);
+		return host;
+	} finally {
+		rmSync(dump, { force: true });
+	}
 }
 var failure = (reason) => /* @__PURE__ */ new Error(`Could not get the server's languages: ${reason}`);
 async function serverLanguages(host, token) {
@@ -108985,79 +109151,6 @@ async function resolveOrigin(context) {
 	if (context.refName !== event.repository?.default_branch) origin.branch = context.refName;
 	return origin;
 }
-// src/properties.ts
-function parseProperties(text) {
-	const properties = /* @__PURE__ */ new Map();
-	const lines = text.split(/\r\n|\r|\n/);
-	let index = 0;
-	const next = () => lines[index++]?.replace(/^[ \t\f]+/, "");
-	for (let first = next(); first !== void 0; first = next()) {
-		if (first === "" || first.startsWith("#") || first.startsWith("!")) continue;
-		let line = first;
-		while (/(?:^|[^\\])(?:\\\\)*\\$/.test(line)) {
-			const following = next();
-			if (following === void 0) break;
-			line = line.slice(0, -1) + following;
-		}
-		const [key, value] = splitEntry(line);
-		properties.set(unescape(key), unescape(value));
-	}
-	return properties;
-}
-function splitEntry(line) {
-	let i = 0;
-	while (i < line.length) {
-		const c = line[i];
-		if (c === "\\") {
-			i += 2;
-			continue;
-		}
-		if (c === "=" || c === ":" || c === " " || c === "	" || c === "\f") break;
-		i++;
-	}
-	const key = line.slice(0, i);
-	let rest = line.slice(i).replace(/^[ \t\f]+/, "");
-	if (rest.startsWith("=") || rest.startsWith(":")) rest = rest.slice(1).replace(/^[ \t\f]+/, "");
-	return [key, rest];
-}
-var ESCAPES = {
-	t: "	",
-	n: "\n",
-	r: "\r",
-	f: "\f"
-};
-function unescape(text) {
-	return text.replace(/\\(u[0-9a-fA-F]{4}|.)/g, (_, escaped) => escaped.length === 5 ? String.fromCodePoint(Number.parseInt(escaped.slice(1), 16)) : ESCAPES[escaped] ?? escaped);
-}
-function parseNpmDump(text) {
-	const fail = (reason) => {
-		throw new Error(`The npm scanner's dump is not in the expected format: ${reason}`);
-	};
-	let outer;
-	let inner;
-	try {
-		outer = JSON.parse(text);
-	} catch {
-		fail("not JSON");
-	}
-	const json = outer?.propertiesJSON;
-	if (typeof json !== "string") fail("no propertiesJSON string");
-	try {
-		inner = JSON.parse(json);
-	} catch {
-		fail("propertiesJSON is not JSON");
-	}
-	const list = inner?.scannerProperties;
-	if (!Array.isArray(list)) fail("no scannerProperties list");
-	const properties = /* @__PURE__ */ new Map();
-	for (const entry of list) {
-		const { key, value } = entry ?? {};
-		if (typeof key !== "string" || typeof value !== "string") fail("a setting that is not a key and a string value");
-		if (properties.has(key)) fail(`${key} appears twice`);
-		properties.set(key, value);
-	}
-	return properties;
-}
 // src/report.ts
 var SKIPPED = /* @__PURE__ */ new Set([
 	".git",
@@ -109081,81 +109174,6 @@ function snapshotReports(directory, reports = /* @__PURE__ */ new Map()) {
 function findNewReport(directory, before) {
 	for (const [path, content] of snapshotReports(directory)) if (before.get(path) !== content) return path;
 }
-// src/tool-errors.ts
-var LINES = 20;
-var WIDTH = 300;
-var KEPT = 1e3;
-var ErrorLines = class {
-	tool;
-	kept = [];
-	streams = [];
-	stdout = this.listener();
-	stderr = this.listener();
-	constructor(tool) {
-		this.tool = tool;
-	}
-	end() {
-		for (const stream of this.streams) {
-			const last = (stream.rest + stream.decoder.end()).slice(0, KEPT);
-			stream.rest = "";
-			this.add(last, stream);
-		}
-		return [...this.kept];
-	}
-	listener() {
-		const stream = {
-			decoder: new StringDecoder("utf8"),
-			rest: "",
-			inside: false
-		};
-		this.streams.push(stream);
-		return (data) => {
-			const parts = stream.decoder.write(data).split("\n");
-			const last = parts.pop() ?? "";
-			for (const part of parts) {
-				this.add(stream.rest + part.slice(0, KEPT), stream);
-				stream.rest = "";
-			}
-			stream.rest = (stream.rest + last).slice(0, KEPT);
-		};
-	}
-	add(line, stream) {
-		const plain = line.trimEnd();
-		if (plain === "" || !this.wanted(plain, stream)) return;
-		const whole = redacted(plain);
-		const cut = whole.length > WIDTH ? `${whole.slice(0, WIDTH)}…` : whole;
-		if (this.tool === "maven" || this.tool === "gradle") {
-			if (this.kept.length < LINES) this.kept.push(cut);
-		} else {
-			this.kept.push(cut);
-			if (this.kept.length > LINES) this.kept.shift();
-		}
-	}
-	wanted(line, stream) {
-		switch (this.tool) {
-			case "maven":
-				if (line.startsWith("[ERROR] Failed to execute goal ")) stream.inside = true;
-				if (!line.startsWith("[ERROR] ") || line.startsWith("[ERROR] -> ")) stream.inside = false;
-				return stream.inside;
-			case "gradle":
-				if (line === "* What went wrong:") {
-					stream.inside = true;
-					return false;
-				}
-				if (line.startsWith("* ")) stream.inside = false;
-				return stream.inside;
-			case "scanner": return /^\d{2}:\d{2}:\d{2}\.\d{3} ERROR /.test(line);
-			case "npm": return line.startsWith("[ERROR] ");
-		}
-	}
-};
-var ToolFailure = class extends Error {
-	lines;
-	constructor(message, lines) {
-		super(message);
-		this.lines = lines;
-	}
-};
 // src/main.ts
 async function direct(inputs) {
 	if (!inputs.projectKey) throw new Error("Input required: project-key");
@@ -109454,40 +109472,41 @@ async function analyzeCommit(inputs, context, origin, workspace, found) {
 	if (choiceWarning) warn(choiceWarning);
 	const properties = resolved.properties;
 	if (!properties.has("sonar.projectBaseDir")) properties.set("sonar.projectBaseDir", workspace);
-	const languages = await serverLanguages(languagesHost(inputs.hostUrl, inputs.buildArguments), inputs.token);
-	const trusted = trustedProperties(inputs, {
-		headSha: origin.headSha,
-		pullRequest,
-		branch: origin.branch
-	}, join(temp, "scannerwork"), languages);
-	for (const [key, value] of trusted) properties.set(key, value);
-	const settingsFile = join(temp, "sonar-project.properties");
-	writeFileSync(settingsFile, formatProperties(properties));
-	const { off, turnedOn } = logUntestedLanguages(untestedLanguages(languages), inputs.buildArguments);
 	const scanner = await installScanner(inputs.scannerVersion);
-	info(`Analysing ${name}`);
 	const env = toolEnvironment();
-	env.SONAR_TOKEN = inputs.token;
 	if (process.platform === "linux") env.LC_ALL = "C.UTF-8";
-	const resume = randomUUID();
 	const cwd = join(temp, "run");
 	mkdirSync(cwd);
-	info(`::stop-commands::${resume}`);
+	const settingsFile = join(temp, "sonar-project.properties");
+	const args = [`-Dproject.settings=${settingsFile}`, ...inputs.buildArguments];
+	const settings = (languages) => {
+		const trusted = trustedProperties(inputs, {
+			headSha: origin.headSha,
+			pullRequest,
+			branch: origin.branch
+		}, join(temp, "scannerwork"), languages);
+		for (const [key, value] of trusted) properties.set(key, value);
+		writeFileSync(settingsFile, formatProperties(properties));
+	};
+	settings([]);
+	const languages = await serverLanguages(await withoutCommands(() => scannerServer(scanner, args, {
+		cwd,
+		env: { ...env }
+	}, join(temp, "server.properties"))), inputs.token);
+	settings(languages);
+	const { off, turnedOn } = logUntestedLanguages(untestedLanguages(languages), inputs.buildArguments);
+	info(`Analysing ${name}`);
+	env.SONAR_TOKEN = inputs.token;
 	const errors = new ErrorLines("scanner");
-	let exitCode;
-	try {
-		exitCode = await exec(scanner, [`-Dproject.settings=${settingsFile}`, ...inputs.buildArguments], {
-			cwd,
-			env,
-			ignoreReturnCode: true,
-			listeners: {
-				stdout: errors.stdout,
-				stderr: errors.stderr
-			}
-		});
-	} finally {
-		info(`::${resume}::`);
-	}
+	const exitCode = await withoutCommands(() => exec(scanner, args, {
+		cwd,
+		env,
+		ignoreReturnCode: true,
+		listeners: {
+			stdout: errors.stdout,
+			stderr: errors.stderr
+		}
+	}));
 	if (exitCode !== 0) throw new ToolFailure(`The Sonar scanner failed with exit code ${exitCode}`, errors.end());
 	const reportTask = join(temp, "scannerwork", "report-task.txt");
 	writeSummary(() => analyzeSummary({
@@ -109503,6 +109522,15 @@ async function analyzeCommit(inputs, context, origin, workspace, found) {
 		warnings: warningCount()
 	}));
 	return { analysed: true };
+}
+async function withoutCommands(run) {
+	const resume = randomUUID();
+	info(`::stop-commands::${resume}`);
+	try {
+		return await run();
+	} finally {
+		info(`::${resume}::`);
+	}
 }
 function logUntestedLanguages(languages, buildArguments) {
 	const turnedOn = definitions(buildArguments).map(([key]) => key).filter((key) => key.startsWith("sonar.lang.patterns."));

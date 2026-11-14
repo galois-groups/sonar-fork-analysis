@@ -3,7 +3,6 @@ import { configDefaults, defineConfig } from 'vitest/config'
 export default defineConfig(({ command }) => ({
   build: {
     ssr: true,
-    sourcemap: true,
     // The bundled packages' licences require their notices to travel with the code.
     license: { fileName: 'licenses.md' },
     rolldownOptions: {

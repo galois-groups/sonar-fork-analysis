@@ -4,5 +4,3 @@ import { a as cleanUpCheckout, n as reportInterrupted } from "./shared.js";
 cleanUpCheckout();
 await reportInterrupted();
 export {};
-
-//# sourceMappingURL=post.js.map

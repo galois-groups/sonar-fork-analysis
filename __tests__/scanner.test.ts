@@ -20,27 +20,18 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import * as openpgp from 'openpgp'
+import { answer, request } from '../__fixtures__/http.js'
 import { windows } from '../__fixtures__/platform.js'
+import type { Answer } from '../src/http.js'
 
-const downloadTool = vi.fn<(url: string) => Promise<string>>()
 const extractZip =
   vi.fn<(file: string, destination?: string) => Promise<string>>()
 vi.doMock('@actions/tool-cache', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@actions/tool-cache')>()),
-  downloadTool,
   extractZip
 }))
-// The key servers, asked through the HTTP client.
-const keyServer = vi.fn<(url: string) => Promise<[number, string]>>()
-vi.doMock('@actions/http-client', () => ({
-  HttpClient: class {
-    async get(url: string): Promise<object> {
-      const [statusCode, body] = await keyServer(url)
-      return { message: { statusCode }, readBody: async () => body }
-    }
-  }
-}))
-const { HTTPError } = await import('@actions/tool-cache')
+// The key servers and SonarSource's downloads.
+vi.doMock('../src/http.js', () => ({ request }))
 const warning = vi.fn<(message: string) => void>()
 vi.doMock('@actions/core', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@actions/core')>()),
@@ -102,6 +93,8 @@ describe('scannerZip', () => {
   let served: Buffer
   let signature: string
   let keyAnswer: string
+  let keyServer: (url: string) => Answer
+  let download: (url: string) => Answer
   const saved = { ...process.env }
 
   const sign = async (content: Buffer): Promise<string> =>
@@ -126,34 +119,49 @@ describe('scannerZip', () => {
     served = zip
     signature = await sign(zip)
     keyAnswer = key.toPublic().armor()
-    keyServer.mockImplementation(async (url) => {
-      if (!KEY_SERVERS.includes(new URL(url).hostname))
-        throw new Error(`Unexpected key server ${url}`)
-      return [200, keyAnswer]
-    })
-    let downloads = 0
-    downloadTool.mockImplementation(async (url) => {
-      const file = join(root, `download-${String(++downloads)}`)
-      if (url.endsWith('.zip.asc')) writeFileSync(file, signature)
-      else if (url.endsWith('.zip')) writeFileSync(file, served)
-      else throw new Error(`Unexpected download ${url}`)
-      return file
-    })
+    keyServer = () => answer(200, keyAnswer)
+    download = (url) => {
+      if (url.endsWith('.zip.asc')) return answer(200, signature)
+      if (url.endsWith('.zip')) return answer(200, served)
+      throw new Error(`Unexpected download ${url}`)
+    }
+    request.mockReset()
+    request.mockImplementation(async (url) =>
+      KEY_SERVERS.includes(new URL(url).hostname)
+        ? keyServer(url)
+        : download(url)
+    )
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     process.env = { ...saved }
     rmSync(root, { recursive: true, force: true })
   })
 
-  const zipDownloads = (): number =>
-    downloadTool.mock.calls.filter(([url]) => url.endsWith('.zip')).length
+  const requests = (ending: string): number =>
+    request.mock.calls.filter(([url]) => url.endsWith(ending)).length
+  const zipDownloads = (): number => requests('.zip')
+
+  // Between attempts the download waits, which the test doesn't.
+  async function failure(): Promise<unknown> {
+    vi.useFakeTimers()
+    const failed = scannerZip('1.0', 'cli', fingerprint).catch(
+      (error: unknown) => error
+    )
+    await vi.runAllTimersAsync()
+    return failed
+  }
 
   it('downloads, checks and keeps the zip, then uses the kept copy', async () => {
     expect(await scannerZip('1.0', 'cli', fingerprint)).toEqual(zip)
     expect(readFileSync(keptZip('1.0', 'cli'))).toEqual(zip)
     expect(zipDownloads()).toBe(1)
-    downloadTool.mockClear()
+    // As patient as the toolkit's downloads were.
+    expect(request).toHaveBeenCalledWith(expect.stringMatching(/cli\.zip$/), {
+      timeout: 180_000
+    })
+    request.mockClear()
 
     expect(await scannerZip('1.0', 'cli', fingerprint)).toEqual(zip)
     expect(zipDownloads()).toBe(0)
@@ -194,18 +202,17 @@ describe('scannerZip', () => {
   })
 
   it('works with one key server down', async () => {
-    const answer = keyServer.getMockImplementation()
-    keyServer.mockImplementation(async (url) => {
+    keyServer = (url) => {
       if (new URL(url).hostname === 'keys.openpgp.org')
         throw new Error('Request timeout')
-      return answer?.(url) ?? [500, '']
-    })
+      return answer(200, keyAnswer)
+    }
 
     expect(await scannerZip('1.0', 'cli', fingerprint)).toEqual(zip)
   })
 
   it('takes no error page for a key', async () => {
-    keyServer.mockResolvedValue([404, keyAnswer])
+    keyServer = () => answer(404, keyAnswer)
 
     await expect(scannerZip('1.0', 'cli', fingerprint)).rejects.toThrow(
       "Could not get SonarSource's key"
@@ -213,20 +220,65 @@ describe('scannerZip', () => {
   })
 
   it('points at scanner-version when the version does not exist', async () => {
-    downloadTool.mockRejectedValue(new HTTPError(404))
+    download = () => answer(404)
 
     await expect(scannerZip('1.0', 'cli', fingerprint)).rejects.toThrow(
       "cli.zip.asc doesn't exist. Check that scanner-version names a released scanner CLI."
     )
+    expect(requests('.zip.asc')).toBe(1)
   })
 
-  it('names the download that failed', async () => {
-    downloadTool.mockRejectedValue(new HTTPError(503))
+  it('names the download the server kept failing', async () => {
+    download = () => answer(503)
 
-    await expect(scannerZip('1.0', 'cli', fingerprint)).rejects.toThrow(
-      /^Could not download https:\/\/\S+\/cli\.zip\.asc: Unexpected HTTP response: 503$/
+    expect(await failure()).toEqual(
+      new Error(
+        'Could not download https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/cli.zip.asc: HTTP 503'
+      )
+    )
+    expect(requests('.zip.asc')).toBe(3)
+  })
+
+  it('names the download that never arrived', async () => {
+    download = () => {
+      throw new Error('No answer from binaries.sonarsource.com: socket hang up')
+    }
+
+    expect(await failure()).toEqual(
+      new Error(
+        'Could not download https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/cli.zip.asc: No answer from binaries.sonarsource.com: socket hang up'
+      )
     )
   })
+
+  it('gives up at once on a download the server refuses', async () => {
+    download = () => answer(403)
+
+    await expect(scannerZip('1.0', 'cli', fingerprint)).rejects.toThrow(
+      /^Could not download https:\/\/\S+\/cli\.zip\.asc: HTTP 403$/
+    )
+    expect(requests('.zip.asc')).toBe(1)
+  })
+
+  it.each([503, 408, 429])(
+    'tries a download again after a %i',
+    async (status) => {
+      vi.useFakeTimers()
+      const served = download
+      let failed = false
+      download = (url) => {
+        if (failed || !url.endsWith('.zip')) return served(url)
+        failed = true
+        return answer(status)
+      }
+
+      const downloaded = scannerZip('1.0', 'cli', fingerprint)
+      await vi.runAllTimersAsync()
+
+      expect(await downloaded).toEqual(zip)
+      expect(zipDownloads()).toBe(2)
+    }
+  )
 
   it.skipIf(windows)(
     'reads and writes through no link where the zip is kept',
@@ -253,8 +305,9 @@ describe('scannerZip', () => {
 
 describe('installScanner', () => {
   beforeEach(() => {
-    keyServer.mockRejectedValue(new Error('offline'))
-    downloadTool.mockRejectedValue(new Error('offline'))
+    // Nothing to download: the warning comes before.
+    request.mockReset()
+    request.mockResolvedValue(answer(404))
   })
 
   it('warns about a version the checks never ran against', async () => {

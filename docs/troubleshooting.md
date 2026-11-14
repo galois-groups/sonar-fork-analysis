@@ -13,6 +13,15 @@ path, file or link left out is in the log only. One warning counts them.
 | Invalid project key '…'                    | Project keys can only contain letters, digits, `.`, `_`, `:` and `-`.            |
 | Unknown mode '…'<br>Unknown build tool '…' | There's a typo in `mode` or `build-tool`. See [inputs](configuration.md#inputs). |
 
+## Network
+
+Both workflows can print these.
+
+| Message                                                                                 | What it means                                                                                                                                                                                                                              |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| No answer from …: …                                                                     | The action couldn't reach that server, or the server stopped answering. The text after the server's name says why. Re-run the job. On your own runners, check the firewall and the [proxy settings](configuration.md#self-hosted-runners). |
+| … redirected to an address the action doesn't follow<br>… redirected more than 10 times | The server sent the action to another address. The action follows no redirect from HTTPS to HTTP, and none that goes in circles. Check `sonar-host-url`, or the proxy in between.                                                          |
+
 ## Build workflow
 
 | Message                                                                                                                                                                                                                         | What it means                                                                                                                                                                                                                                                                                                                                                   |

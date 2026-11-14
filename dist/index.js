@@ -1,4 +1,4 @@
-import { A as warning, B as __commonJSMin, C as getInput, D as notice, E as isDebug, F as BearerCredentialHandler, G as __toESM, H as __exportAll, I as HttpClient, L as HttpCodes, M as mkdirP, N as rmRF, O as setFailed, P as which, R as require_undici, S as error, T as info, U as __require, V as __esmMin, W as __toCommonJS, _ as toolEnvironment, b as retry$2, c as resetWarnings, d as warnedLeftOut, f as warningCount, g as jobEnvironment, h as secret, i as trackedReporter, j as exec, k as setSecret, l as warn, m as redacted, o as prepareCheckout, p as forgetSecrets, r as runStatusTarget, s as verifyCheckout, t as noReporter, u as warnLeftOut, v as realLocation, w as getMultilineInput, x as debug, y as realPath, z as require_tunnel } from "./shared.js";
+import { A as setSecret, B as __commonJSMin, C as error, D as isDebug, E as info, F as BearerCredentialHandler, G as __toESM, H as __exportAll, I as HttpClient, L as HttpCodes, M as exec, N as mkdirP, O as notice, P as which, R as require_undici, S as debug, T as getMultilineInput, U as __require, V as __esmMin, W as __toCommonJS, _ as toolEnvironment, b as retry$2, c as resetWarnings, d as warnedLeftOut, f as warningCount, g as jobEnvironment, h as secret, i as trackedReporter, j as warning, k as setFailed, l as warn, m as redacted, o as prepareCheckout, p as forgetSecrets, r as runStatusTarget, s as verifyCheckout, t as noReporter, u as warnLeftOut, v as realLocation, w as getInput, x as request$1, y as realPath, z as require_tunnel } from "./shared.js";
 import os, { EOL } from "os";
 import * as crypto$3 from "crypto";
 import * as fs$2 from "fs";
@@ -7,7 +7,6 @@ import * as path from "path";
 import { normalize, resolve } from "path";
 import { EventEmitter } from "events";
 import { ok } from "assert";
-import * as util$2 from "util";
 import http from "node:http";
 import Stream, { Readable, Transform } from "node:stream";
 import buffer, { isUtf8 } from "node:buffer";
@@ -77764,11 +77763,6 @@ function languagesHost(hostUrl, buildArguments) {
 	return host;
 }
 var failure = (reason) => /* @__PURE__ */ new Error(`Could not get the server's languages: ${reason}`);
-function reasonOf(error) {
-	if (!(error instanceof Error)) return String(error);
-	if (error.cause instanceof Error) return `${error.message} (${error.cause.message})`;
-	return error.message;
-}
 async function serverLanguages(host, token) {
 	let url;
 	try {
@@ -77779,17 +77773,17 @@ async function serverLanguages(host, token) {
 	let response;
 	try {
 		response = await retry$2(async () => {
-			const answer = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+			const answer = await request$1(url, { headers: { Authorization: `Bearer ${token}` } });
 			if (answer.status >= 500) throw new Error(`${host} answered ${answer.status}`);
 			return answer;
 		});
 	} catch (error) {
-		throw failure(reasonOf(error));
+		throw failure(error.message);
 	}
 	if (!response.ok) throw failure(`${host} answered ${response.status}`);
 	let body;
 	try {
-		body = await response.json();
+		body = response.json();
 	} catch {
 		throw failure(`${host} answered something other than JSON`);
 	}
@@ -80420,72 +80414,6 @@ var require_subset = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 		rcompareIdentifiers: identifiers.rcompareIdentifiers
 	};
 })))();
-// node_modules/@actions/tool-cache/lib/retry-helper.js
-var __awaiter$1 = function(thisArg, _arguments, P, generator) {
-	function adopt(value) {
-		return value instanceof P ? value : new P(function(resolve) {
-			resolve(value);
-		});
-	}
-	return new (P || (P = Promise))(function(resolve, reject) {
-		function fulfilled(value) {
-			try {
-				step(generator.next(value));
-			} catch (e) {
-				reject(e);
-			}
-		}
-		function rejected(value) {
-			try {
-				step(generator["throw"](value));
-			} catch (e) {
-				reject(e);
-			}
-		}
-		function step(result) {
-			result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
-		}
-		step((generator = generator.apply(thisArg, _arguments || [])).next());
-	});
-};
-/**
-* Internal class for retries
-*/
-var RetryHelper = class {
-	constructor(maxAttempts, minSeconds, maxSeconds) {
-		if (maxAttempts < 1) throw new Error("max attempts should be greater than or equal to 1");
-		this.maxAttempts = maxAttempts;
-		this.minSeconds = Math.floor(minSeconds);
-		this.maxSeconds = Math.floor(maxSeconds);
-		if (this.minSeconds > this.maxSeconds) throw new Error("min seconds should be less than or equal to max seconds");
-	}
-	execute(action, isRetryable) {
-		return __awaiter$1(this, void 0, void 0, function* () {
-			let attempt = 1;
-			while (attempt < this.maxAttempts) {
-				try {
-					return yield action();
-				} catch (err) {
-					if (isRetryable && !isRetryable(err)) throw err;
-					info(err.message);
-				}
-				const seconds = this.getSleepAmount();
-				info(`Waiting ${seconds} seconds before trying again`);
-				yield this.sleep(seconds);
-				attempt++;
-			}
-			return yield action();
-		});
-	}
-	getSleepAmount() {
-		return Math.floor(Math.random() * (this.maxSeconds - this.minSeconds + 1)) + this.minSeconds;
-	}
-	sleep(seconds) {
-		return __awaiter$1(this, void 0, void 0, function* () {
-			return new Promise((resolve) => setTimeout(resolve, seconds * 1e3));
-		});
-	}
-};
 // node_modules/@actions/tool-cache/lib/tool-cache.js
 var __awaiter = function(thisArg, _arguments, P, generator) {
 	function adopt(value) {
@@ -80514,76 +80442,8 @@ var __awaiter = function(thisArg, _arguments, P, generator) {
 		step((generator = generator.apply(thisArg, _arguments || [])).next());
 	});
 };
-var HTTPError = class extends Error {
-	constructor(httpStatusCode) {
-		super(`Unexpected HTTP response: ${httpStatusCode}`);
-		this.httpStatusCode = httpStatusCode;
-		Object.setPrototypeOf(this, new.target.prototype);
-	}
-};
 var IS_WINDOWS = process.platform === "win32";
 process.platform;
-var userAgent = "actions/tool-cache";
-/**
-* Download a tool from an url and stream it into a file
-*
-* @param url       url of tool to download
-* @param dest      path to download tool
-* @param auth      authorization header
-* @param headers   other headers
-* @returns         path to downloaded tool
-*/
-function downloadTool(url, dest, auth, headers) {
-	return __awaiter(this, void 0, void 0, function* () {
-		dest = dest || path.join(_getTempDirectory(), crypto$3.randomUUID());
-		yield mkdirP(path.dirname(dest));
-		debug(`Downloading ${url}`);
-		debug(`Destination ${dest}`);
-		return yield new RetryHelper(3, _getGlobal("TEST_DOWNLOAD_TOOL_RETRY_MIN_SECONDS", 10), _getGlobal("TEST_DOWNLOAD_TOOL_RETRY_MAX_SECONDS", 20)).execute(() => __awaiter(this, void 0, void 0, function* () {
-			return yield downloadToolAttempt(url, dest || "", auth, headers);
-		}), (err) => {
-			if (err instanceof HTTPError && err.httpStatusCode) {
-				if (err.httpStatusCode < 500 && err.httpStatusCode !== 408 && err.httpStatusCode !== 429) return false;
-			}
-			return true;
-		});
-	});
-}
-function downloadToolAttempt(url, dest, auth, headers) {
-	return __awaiter(this, void 0, void 0, function* () {
-		if (fs$2.existsSync(dest)) throw new Error(`Destination file path ${dest} already exists`);
-		const http = new HttpClient(userAgent, [], { allowRetries: false });
-		if (auth) {
-			debug("set auth");
-			if (headers === void 0) headers = {};
-			headers.authorization = auth;
-		}
-		const response = yield http.get(url, headers);
-		if (response.message.statusCode !== 200) {
-			const err = new HTTPError(response.message.statusCode);
-			debug(`Failed to download from "${url}". Code(${response.message.statusCode}) Message(${response.message.statusMessage})`);
-			throw err;
-		}
-		const pipeline = util$2.promisify(stream.pipeline);
-		const readStream = _getGlobal("TEST_DOWNLOAD_TOOL_RESPONSE_MESSAGE_FACTORY", () => response.message)();
-		let succeeded = false;
-		try {
-			yield pipeline(readStream, fs$2.createWriteStream(dest));
-			debug("download complete");
-			succeeded = true;
-			return dest;
-		} finally {
-			if (!succeeded) {
-				debug("download failed");
-				try {
-					yield rmRF(dest);
-				} catch (err) {
-					debug(`Failed to delete '${dest}'. ${err.message}`);
-				}
-			}
-		}
-	});
-}
 /**
 * Extract a zip
 *
@@ -80667,13 +80527,6 @@ function _getTempDirectory() {
 	const tempDirectory = process.env["RUNNER_TEMP"] || "";
 	ok(tempDirectory, "Expected RUNNER_TEMP to be defined");
 	return tempDirectory;
-}
-/**
-* Gets a global variable
-*/
-function _getGlobal(key, defaultValue) {
-	const value = global[key];
-	return value !== void 0 ? value : defaultValue;
 }
 // node_modules/openpgp/dist/node/openpgp.mjs
 /*! OpenPGP.js v6.3.2 - 2026-09-24 - this is LGPL licensed code, see LICENSE/our website https://openpgpjs.org/ for more information. */
@@ -108628,26 +108481,29 @@ function keep(path, bytes) {
 		if (written) rmSync(part, { force: true });
 	}
 }
+var DOWNLOAD_TIMEOUT = 18e4;
+function temporary(status) {
+	return status >= 500 || status === 408 || status === 429;
+}
 async function download(url) {
-	let file;
+	let answer;
 	try {
-		file = await downloadTool(url);
+		answer = await retry$2(async () => {
+			const attempt = await request$1(url, { timeout: DOWNLOAD_TIMEOUT });
+			if (temporary(attempt.status)) throw new Error(`HTTP ${String(attempt.status)}`);
+			return attempt;
+		});
 	} catch (error) {
-		if (error instanceof HTTPError && error.httpStatusCode === 404) throw new Error(`${url} doesn't exist. Check that scanner-version names a released scanner CLI.`, { cause: error });
 		throw new Error(`Could not download ${url}: ${message(error)}`, { cause: error });
 	}
-	try {
-		return readFileSync$1(file);
-	} finally {
-		rmSync(file, { force: true });
-	}
+	if (answer.status === 404) throw new Error(`${url} doesn't exist. Check that scanner-version names a released scanner CLI.`);
+	if (!answer.ok) throw new Error(`Could not download ${url}: HTTP ${String(answer.status)}`);
+	return answer.body;
 }
-var keyClient = new HttpClient("sonar-fork-analysis", void 0, { socketTimeout: 3e4 });
 async function keyCopy(url, fingerprint) {
-	const response = await keyClient.get(url);
-	const body = await response.readBody();
-	if (response.message.statusCode !== 200) throw new Error(`HTTP ${String(response.message.statusCode)}`);
-	return readSigningKey(body, fingerprint);
+	const answer = await request$1(url);
+	if (answer.status !== 200) throw new Error(`HTTP ${String(answer.status)}`);
+	return readSigningKey(answer.body.toString(), fingerprint);
 }
 async function signingKey(fingerprint = SONARSOURCE_KEY) {
 	const copies = [];
@@ -108915,12 +108771,12 @@ async function findPullRequests(context, owner, branch, sha) {
 		head: `${owner}:${branch}`,
 		per_page: "100"
 	});
-	const response = await fetch(`${context.apiUrl}/repos/${context.repository}/pulls?${query.toString()}`, { headers: {
+	const response = await request$1(`${context.apiUrl}/repos/${context.repository}/pulls?${query.toString()}`, { headers: {
 		Accept: "application/vnd.github+json",
 		Authorization: `Bearer ${context.token}`
 	} });
 	if (!response.ok) throw new Error(`Could not look up the pull request: GitHub answered ${response.status}`);
-	return (await response.json()).filter((pull) => pull.head.sha === sha).map((pull) => ({
+	return response.json().filter((pull) => pull.head.sha === sha).map((pull) => ({
 		key: String(pull.number),
 		branch: pull.head.ref,
 		base: pull.base.ref
@@ -108944,13 +108800,13 @@ function goneHint(candidates, hint) {
 	return key && !candidates.some((pull) => pull.key === key) ? Number(key) : void 0;
 }
 async function pullRequestGone(context, head, number) {
-	const response = await fetch(`${context.apiUrl}/repos/${context.repository}/pulls/${String(number)}`, { headers: {
+	const response = await request$1(`${context.apiUrl}/repos/${context.repository}/pulls/${String(number)}`, { headers: {
 		Accept: "application/vnd.github+json",
 		Authorization: `Bearer ${context.token}`
 	} });
 	if (response.status === 404) return false;
 	if (!response.ok) throw new Error(`Could not look up the pull request: GitHub answered ${response.status}`);
-	const pull = await response.json();
+	const pull = response.json();
 	return pull.head.repo?.full_name.toLowerCase() === head.repository.toLowerCase() && pull.head.ref === head.branch && (pull.state === "closed" || pull.head.sha !== head.sha);
 }
 async function resolveOrigin(context) {

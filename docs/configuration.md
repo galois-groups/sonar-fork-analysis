@@ -346,6 +346,14 @@ workspace before the action:
 Don't let that runner build pull requests from forks, though. See
 [hardening your setup](security.md#hardening-your-setup).
 
+If the runner is behind a proxy, the action sends its own requests through the
+proxy named in `https_proxy`, `http_proxy` and `no_proxy`. Those requests go to
+GitHub, your Sonar server, binaries.sonarsource.com and the key servers. Sonar's
+scanner has
+[proxy settings of its own](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/analysis-parameters/parameters-not-settable-in-ui),
+such as `-Dsonar.scanner.proxyHost` and `-Dsonar.scanner.proxyPort`. In the
+Sonar workflow, pass them in `build-arguments`.
+
 ## Supported runners
 
 | Runner      | Build workflow | Sonar workflow |

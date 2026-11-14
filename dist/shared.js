@@ -16260,11 +16260,11 @@ var HttpCodes;
 	HttpCodes[HttpCodes["ServiceUnavailable"] = 503] = "ServiceUnavailable";
 	HttpCodes[HttpCodes["GatewayTimeout"] = 504] = "GatewayTimeout";
 })(HttpCodes || (HttpCodes = {}));
-var Headers;
+var Headers$1;
 (function(Headers) {
 	Headers["Accept"] = "accept";
 	Headers["ContentType"] = "content-type";
-})(Headers || (Headers = {}));
+})(Headers$1 || (Headers$1 = {}));
 var MediaTypes;
 (function(MediaTypes) {
 	MediaTypes["ApplicationJson"] = "application/json";
@@ -16398,7 +16398,7 @@ var HttpClient = class {
 	*/
 	getJson(requestUrl_1) {
 		return __awaiter$9(this, arguments, void 0, function* (requestUrl, additionalHeaders = {}) {
-			additionalHeaders[Headers.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers.Accept, MediaTypes.ApplicationJson);
+			additionalHeaders[Headers$1.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers$1.Accept, MediaTypes.ApplicationJson);
 			const res = yield this.get(requestUrl, additionalHeaders);
 			return this._processResponse(res, this.requestOptions);
 		});
@@ -16406,8 +16406,8 @@ var HttpClient = class {
 	postJson(requestUrl_1, obj_1) {
 		return __awaiter$9(this, arguments, void 0, function* (requestUrl, obj, additionalHeaders = {}) {
 			const data = JSON.stringify(obj, null, 2);
-			additionalHeaders[Headers.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers.Accept, MediaTypes.ApplicationJson);
-			additionalHeaders[Headers.ContentType] = this._getExistingOrDefaultContentTypeHeader(additionalHeaders, MediaTypes.ApplicationJson);
+			additionalHeaders[Headers$1.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers$1.Accept, MediaTypes.ApplicationJson);
+			additionalHeaders[Headers$1.ContentType] = this._getExistingOrDefaultContentTypeHeader(additionalHeaders, MediaTypes.ApplicationJson);
 			const res = yield this.post(requestUrl, data, additionalHeaders);
 			return this._processResponse(res, this.requestOptions);
 		});
@@ -16415,8 +16415,8 @@ var HttpClient = class {
 	putJson(requestUrl_1, obj_1) {
 		return __awaiter$9(this, arguments, void 0, function* (requestUrl, obj, additionalHeaders = {}) {
 			const data = JSON.stringify(obj, null, 2);
-			additionalHeaders[Headers.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers.Accept, MediaTypes.ApplicationJson);
-			additionalHeaders[Headers.ContentType] = this._getExistingOrDefaultContentTypeHeader(additionalHeaders, MediaTypes.ApplicationJson);
+			additionalHeaders[Headers$1.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers$1.Accept, MediaTypes.ApplicationJson);
+			additionalHeaders[Headers$1.ContentType] = this._getExistingOrDefaultContentTypeHeader(additionalHeaders, MediaTypes.ApplicationJson);
 			const res = yield this.put(requestUrl, data, additionalHeaders);
 			return this._processResponse(res, this.requestOptions);
 		});
@@ -16424,8 +16424,8 @@ var HttpClient = class {
 	patchJson(requestUrl_1, obj_1) {
 		return __awaiter$9(this, arguments, void 0, function* (requestUrl, obj, additionalHeaders = {}) {
 			const data = JSON.stringify(obj, null, 2);
-			additionalHeaders[Headers.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers.Accept, MediaTypes.ApplicationJson);
-			additionalHeaders[Headers.ContentType] = this._getExistingOrDefaultContentTypeHeader(additionalHeaders, MediaTypes.ApplicationJson);
+			additionalHeaders[Headers$1.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers$1.Accept, MediaTypes.ApplicationJson);
+			additionalHeaders[Headers$1.ContentType] = this._getExistingOrDefaultContentTypeHeader(additionalHeaders, MediaTypes.ApplicationJson);
 			const res = yield this.patch(requestUrl, data, additionalHeaders);
 			return this._processResponse(res, this.requestOptions);
 		});
@@ -16606,14 +16606,14 @@ var HttpClient = class {
 	_getExistingOrDefaultContentTypeHeader(additionalHeaders, _default) {
 		let clientHeader;
 		if (this.requestOptions && this.requestOptions.headers) {
-			const headerValue = lowercaseKeys(this.requestOptions.headers)[Headers.ContentType];
+			const headerValue = lowercaseKeys(this.requestOptions.headers)[Headers$1.ContentType];
 			if (headerValue) {
 				if (typeof headerValue === "number") clientHeader = String(headerValue);
 				else if (Array.isArray(headerValue)) clientHeader = headerValue.join(", ");
 				else clientHeader = headerValue;
 			}
 		}
-		const additionalValue = additionalHeaders[Headers.ContentType];
+		const additionalValue = additionalHeaders[Headers$1.ContentType];
 		if (additionalValue !== void 0) {
 			if (typeof additionalValue === "number") return String(additionalValue);
 			else if (Array.isArray(additionalValue)) return additionalValue.join(", ");
@@ -17193,28 +17193,6 @@ var __awaiter$4 = function(thisArg, _arguments, P, generator) {
 		step((generator = generator.apply(thisArg, _arguments || [])).next());
 	});
 };
-/**
-* Remove a path recursively with force
-*
-* @param inputPath path to remove
-*/
-function rmRF(inputPath) {
-	return __awaiter$4(this, void 0, void 0, function* () {
-		if (IS_WINDOWS$1) {
-			if (/[*"<>|]/.test(inputPath)) throw new Error("File path must not contain `*`, `\"`, `<`, `>` or `|` on Windows");
-		}
-		try {
-			yield rm(inputPath, {
-				force: true,
-				maxRetries: 3,
-				recursive: true,
-				retryDelay: 300
-			});
-		} catch (err) {
-			throw new Error(`File was unable to be removed ${err}`);
-		}
-	});
-}
 /**
 * Make a directory.  Creates the full path with folders in between
 * Will throw if it fails
@@ -17875,6 +17853,71 @@ function saveState(name, value) {
 function getState(name) {
 	return process.env[`STATE_${name}`] || "";
 }
+// src/http.ts
+var TIMEOUT = 3e4;
+var MAX_REDIRECTS = 10;
+var REDIRECTS = /* @__PURE__ */ new Set([
+	301,
+	302,
+	303,
+	307,
+	308
+]);
+function reason(error) {
+	if (!(error instanceof Error)) return String(error);
+	return error.message || error.code || error.name;
+}
+async function send(target, { method = "GET", headers = {}, body, timeout = TIMEOUT }) {
+	try {
+		const { message } = await new HttpClient("sonar-fork-analysis", void 0, {
+			allowRedirects: false,
+			socketTimeout: timeout
+		}).request(method, target.href, body ?? null, headers);
+		message.setTimeout(timeout, () => message.destroy(/* @__PURE__ */ new Error("the answer stopped half-way")));
+		const chunks = [];
+		for await (const chunk of message) chunks.push(chunk);
+		const received = new Headers();
+		for (let i = 0; i + 1 < message.rawHeaders.length; i += 2) received.append(message.rawHeaders[i], message.rawHeaders[i + 1]);
+		const status = message.statusCode;
+		const bytes = Buffer.concat(chunks);
+		return {
+			status,
+			ok: status >= 200 && status < 300,
+			headers: received,
+			body: bytes,
+			json: () => JSON.parse(bytes.toString())
+		};
+	} catch (error) {
+		throw new Error(`No answer from ${target.host}: ${reason(error)}`, { cause: error });
+	}
+}
+function redirected(from, location) {
+	const to = URL.canParse(location, from) ? new URL(location, from) : void 0;
+	if (to?.protocol !== "https:" && !(to?.protocol === "http:" && from.protocol === "http:")) throw new Error(`${from.host} redirected to an address the action doesn't follow`);
+	return to;
+}
+async function request(url, { headers, ...rest } = {}) {
+	const sent = {
+		...rest,
+		headers: { ...headers }
+	};
+	let target = new URL(url);
+	for (let followed = 0;; followed++) {
+		const answer = await send(target, sent);
+		const location = answer.headers.get("location");
+		if (!REDIRECTS.has(answer.status) || location === null) return answer;
+		if (followed === MAX_REDIRECTS) throw new Error(`${new URL(url).host} redirected more than ${String(MAX_REDIRECTS)} times`);
+		const next = redirected(target, location);
+		if (next.origin !== target.origin) {
+			for (const name of Object.keys(sent.headers)) if (name.toLowerCase() === "authorization") Reflect.deleteProperty(sent.headers, name);
+		}
+		if (answer.status === 303) {
+			sent.method = "GET";
+			delete sent.body;
+		}
+		target = next;
+	}
+}
 // src/retry.ts
 var CHECKOUT_POLICY = {
 	attempts: 3,
@@ -18164,11 +18207,12 @@ function statusReporter(target) {
 		const url = `${target.apiUrl}/repos/${target.repository}/statuses/${target.sha}`;
 		let response;
 		try {
-			response = await fetch(url, {
+			response = await request(url, {
 				method: "POST",
 				headers: {
 					Accept: "application/vnd.github+json",
-					Authorization: `Bearer ${target.token}`
+					Authorization: `Bearer ${target.token}`,
+					"Content-Type": "application/json"
 				},
 				body: JSON.stringify({
 					state,
@@ -18250,6 +18294,6 @@ function readNote(saved) {
 		return;
 	}
 }
-export { warning as A, __commonJSMin as B, getInput as C, notice as D, isDebug as E, BearerCredentialHandler as F, __toESM as G, __exportAll as H, HttpClient as I, HttpCodes as L, mkdirP as M, rmRF as N, setFailed as O, which as P, require_undici as R, error as S, info as T, __require as U, __esmMin as V, __toCommonJS as W, toolEnvironment as _, cleanUpCheckout as a, retry as b, resetWarnings as c, warnedLeftOut as d, warningCount as f, jobEnvironment as g, secret as h, trackedReporter as i, exec as j, setSecret as k, warn as l, redacted as m, reportInterrupted as n, prepareCheckout as o, forgetSecrets as p, runStatusTarget as r, verifyCheckout as s, noReporter as t, warnLeftOut as u, realLocation as v, getMultilineInput as w, debug as x, realPath as y, require_tunnel as z };
+export { setSecret as A, __commonJSMin as B, error as C, isDebug as D, info as E, BearerCredentialHandler as F, __toESM as G, __exportAll as H, HttpClient as I, HttpCodes as L, exec as M, mkdirP as N, notice as O, which as P, require_undici as R, debug as S, getMultilineInput as T, __require as U, __esmMin as V, __toCommonJS as W, toolEnvironment as _, cleanUpCheckout as a, retry as b, resetWarnings as c, warnedLeftOut as d, warningCount as f, jobEnvironment as g, secret as h, trackedReporter as i, warning as j, setFailed as k, warn as l, redacted as m, reportInterrupted as n, prepareCheckout as o, forgetSecrets as p, runStatusTarget as r, verifyCheckout as s, noReporter as t, warnLeftOut as u, realLocation as v, getInput as w, request as x, realPath as y, require_tunnel as z };
 
 //# sourceMappingURL=shared.js.map

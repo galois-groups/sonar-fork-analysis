@@ -10,9 +10,19 @@ import regexp from 'eslint-plugin-regexp'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
+const REQUEST =
+  "Use request() from http.ts: it goes through the runner's proxy, gives up on a silent server and keeps tokens off redirects."
+
 const BANNED = {
-  warning: 'Use warn() from warnings.ts: the job summary counts it.',
-  setSecret: 'Use secret() from secrets.ts: the job summary takes it out.'
+  warning: {
+    object: 'core',
+    message: 'Use warn() from warnings.ts: the job summary counts it.'
+  },
+  setSecret: {
+    object: 'core',
+    message: 'Use secret() from secrets.ts: the job summary takes it out.'
+  },
+  downloadTool: { object: 'tc', message: REQUEST }
 }
 
 export default defineConfig(
@@ -90,24 +100,36 @@ export default defineConfig(
     }
   },
   // A later block's options for a rule replace the earlier ones, so each file the bans allow gets the
-  // other one again.
+  // others again.
   ...Object.entries({
-    'src/**': ['warning', 'setSecret'],
-    'src/warnings.ts': ['setSecret'],
-    'src/secrets.ts': ['warning']
+    'src/**': ['warning', 'setSecret', 'downloadTool'],
+    'src/warnings.ts': ['setSecret', 'downloadTool'],
+    'src/secrets.ts': ['warning', 'downloadTool']
   }).map(([files, properties]) => ({
     files: [files],
     rules: {
       'no-restricted-properties': [
         'error',
-        ...properties.map((property) => ({
-          object: 'core',
-          property,
-          message: BANNED[property]
-        }))
+        ...properties.map((property) => ({ property, ...BANNED[property] }))
       ]
     }
   })),
+  {
+    files: ['src/**'],
+    rules: {
+      'no-restricted-globals': ['error', { name: 'fetch', message: REQUEST }]
+    }
+  },
+  {
+    files: ['src/**'],
+    ignores: ['src/http.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { name: '@actions/http-client', message: REQUEST }
+      ]
+    }
+  },
   {
     files: ['__tests__/**', '__fixtures__/**'],
     extends: [vitest.configs.recommended],

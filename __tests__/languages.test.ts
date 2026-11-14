@@ -1,17 +1,18 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import {
+import { answer, request } from '../__fixtures__/http.js'
+
+vi.doMock('../src/http.js', () => ({ request }))
+
+const {
   TESTED_LANGUAGES,
   definitions,
   languagesHost,
   serverLanguages,
   untestedLanguages
-} from '../src/languages.js'
-
-const answer = (body: unknown, status = 200): Response =>
-  new Response(JSON.stringify(body), { status })
+} = await import('../src/languages.js')
 
 afterEach(() => {
-  vi.restoreAllMocks()
+  request.mockReset()
   vi.useRealTimers()
   delete process.env.SONAR_HOST_URL
 })
@@ -62,39 +63,33 @@ describe('languagesHost', () => {
 
 describe('serverLanguages', () => {
   it('lists the language keys, asking with the token', async () => {
-    const fetch = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(
-        answer({ languages: [{ key: 'java' }, { key: 'py' }] })
-      )
+    request.mockResolvedValue(
+      answer(200, { languages: [{ key: 'java' }, { key: 'py' }] })
+    )
 
     expect(await serverLanguages('https://sonar', 'token')).toEqual([
       'java',
       'py'
     ])
-    expect(fetch).toHaveBeenCalledWith(
+    expect(request).toHaveBeenCalledWith(
       'https://sonar/api/languages/list?ps=0',
       { headers: { Authorization: 'Bearer token' } }
     )
   })
 
   it('refuses at once when the server turns it down', async () => {
-    const fetch = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(answer({}, 401))
+    request.mockResolvedValue(answer(401, {}))
 
     await expect(serverLanguages('https://sonar', 'token')).rejects.toThrow(
       "Could not get the server's languages: https://sonar answered 401"
     )
-    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(request).toHaveBeenCalledTimes(1)
   })
 
   it('names the reason a request failed', async () => {
     vi.useFakeTimers()
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
-      new TypeError('fetch failed', {
-        cause: new Error('unable to verify the first certificate')
-      })
+    request.mockRejectedValue(
+      new Error('No answer from sonar: unable to verify the first certificate')
     )
 
     const failure = serverLanguages('https://sonar', 'token').catch(
@@ -104,24 +99,20 @@ describe('serverLanguages', () => {
 
     expect(await failure).toEqual(
       new Error(
-        "Could not get the server's languages: fetch failed (unable to verify the first certificate)"
+        "Could not get the server's languages: No answer from sonar: unable to verify the first certificate"
       )
     )
   })
 
   it('refuses a host that is no URL without asking', async () => {
-    const fetch = vi.spyOn(globalThis, 'fetch')
-
     await expect(serverLanguages('sonar example', 'token')).rejects.toThrow(
       "Could not get the server's languages: sonar example is not a URL"
     )
-    expect(fetch).not.toHaveBeenCalled()
+    expect(request).not.toHaveBeenCalled()
   })
 
   it('refuses an answer that is not JSON', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response('<html>Log in</html>')
-    )
+    request.mockResolvedValue(answer(200, '<html>Log in</html>'))
 
     await expect(serverLanguages('https://sonar', 'token')).rejects.toThrow(
       "Could not get the server's languages: https://sonar answered something other than JSON"
@@ -130,9 +121,9 @@ describe('serverLanguages', () => {
 
   it('tries again when the server fails', async () => {
     vi.useFakeTimers()
-    vi.spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(answer({}, 503))
-      .mockResolvedValueOnce(answer({ languages: [{ key: 'java' }] }))
+    request
+      .mockResolvedValueOnce(answer(503, {}))
+      .mockResolvedValueOnce(answer(200, { languages: [{ key: 'java' }] }))
 
     const languages = serverLanguages('https://sonar', 'token')
     await vi.runAllTimersAsync()
@@ -150,7 +141,7 @@ describe('serverLanguages', () => {
     { languages: 'java' },
     null
   ])('refuses an answer it cannot trust: %j', async (body) => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer(body))
+    request.mockResolvedValue(answer(200, body))
 
     await expect(serverLanguages('https://sonar', 'token')).rejects.toThrow(
       "Could not get the server's languages"

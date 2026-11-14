@@ -1,18 +1,12 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  vi,
-  type MockInstance
-} from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import * as core from '../__fixtures__/core.js'
+import { answer, request } from '../__fixtures__/http.js'
 
 vi.doMock('@actions/core', () => core)
+vi.doMock('../src/http.js', () => ({ request }))
 
 const { reportInterrupted, statusReporter, trackedReporter } =
   await import('../src/status.js')
@@ -25,12 +19,10 @@ const target = {
   name: 'Sonar fork analysis (acme_app)',
   url: 'https://github.com/owner/repo/actions/runs/42'
 }
-
-let fetch: MockInstance<typeof globalThis.fetch>
 const saved = { ...process.env }
 
 beforeEach(() => {
-  fetch = vi.spyOn(globalThis, 'fetch')
+  request.mockReset()
 })
 
 afterEach(() => {
@@ -40,17 +32,17 @@ afterEach(() => {
 })
 
 function sent(call = 0): Record<string, string> {
-  return JSON.parse(String(fetch.mock.calls[call][1]!.body))
+  return JSON.parse(String(request.mock.calls[call][1]!.body))
 }
 
 describe('statusReporter', () => {
   it('posts the state on the analysed commit, linking to the run', async () => {
-    fetch.mockResolvedValue(new Response('{}', { status: 201 }))
+    request.mockResolvedValue(answer(201, '{}'))
 
     await statusReporter(target)('success', 'Analysed')
 
-    const [url, init] = fetch.mock.calls[0]
-    expect(String(url)).toBe(
+    const [url, init] = request.mock.calls[0]
+    expect(url).toBe(
       'https://api.github.com/repos/owner/repo/statuses/head-sha'
     )
     expect(init!.method).toBe('POST')
@@ -65,7 +57,7 @@ describe('statusReporter', () => {
   })
 
   it('keeps descriptions within what GitHub accepts', async () => {
-    fetch.mockResolvedValue(new Response('{}', { status: 201 }))
+    request.mockResolvedValue(answer(201, '{}'))
 
     await statusReporter(target)('failure', 'x'.repeat(200))
 
@@ -73,13 +65,13 @@ describe('statusReporter', () => {
   })
 
   it('stops quietly when the token may not post statuses', async () => {
-    fetch.mockResolvedValue(new Response('{}', { status: 403 }))
+    request.mockResolvedValue(answer(403, '{}'))
     const report = statusReporter(target)
 
     await report('pending', 'Analysing')
     await report('success', 'Analysed')
 
-    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(request).toHaveBeenCalledTimes(1)
     expect(core.info).toHaveBeenCalledWith(
       expect.stringContaining('lacks statuses: write')
     )
@@ -87,25 +79,23 @@ describe('statusReporter', () => {
   })
 
   it('keeps posting through a rate limit, which also answers 403', async () => {
-    fetch
-      .mockResolvedValueOnce(
-        new Response('', { status: 403, headers: { 'retry-after': '60' } })
-      )
-      .mockResolvedValueOnce(new Response('{}', { status: 201 }))
+    request
+      .mockResolvedValueOnce(answer(403, '', { 'retry-after': '60' }))
+      .mockResolvedValueOnce(answer(201, '{}'))
     const report = statusReporter(target)
 
     await report('pending', 'Analysing')
     await report('success', 'Analysed')
 
-    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(request).toHaveBeenCalledTimes(2)
     expect(core.warning).toHaveBeenCalledWith(
       expect.stringContaining('GitHub answered 403')
     )
   })
 
   it('warns, without failing, when GitHub cannot take the status', async () => {
-    fetch
-      .mockResolvedValueOnce(new Response('', { status: 502 }))
+    request
+      .mockResolvedValueOnce(answer(502))
       .mockRejectedValueOnce(new Error('network down'))
     const report = statusReporter(target)
 
@@ -128,7 +118,7 @@ describe('trackedReporter', () => {
   }
 
   it('leaves the post step a failure while the analysis runs, and nothing once it ended', async () => {
-    fetch.mockImplementation(async () => new Response('{}', { status: 201 }))
+    request.mockImplementation(async () => answer(201, '{}'))
     const report = trackedReporter(target)
 
     await report('pending', 'Analysing')
@@ -143,9 +133,9 @@ describe('trackedReporter', () => {
   })
 
   it('leaves the refused final status for the post step to retry', async () => {
-    fetch
-      .mockResolvedValueOnce(new Response('{}', { status: 201 }))
-      .mockResolvedValueOnce(new Response('', { status: 502 }))
+    request
+      .mockResolvedValueOnce(answer(201, '{}'))
+      .mockResolvedValueOnce(answer(502))
     const report = trackedReporter(target)
 
     await report('pending', 'Analysing')
@@ -155,9 +145,9 @@ describe('trackedReporter', () => {
   })
 
   it('leaves nothing once a pending status was refused', async () => {
-    fetch
-      .mockResolvedValueOnce(new Response('', { status: 502 }))
-      .mockResolvedValueOnce(new Response('', { status: 502 }))
+    request
+      .mockResolvedValueOnce(answer(502))
+      .mockResolvedValueOnce(answer(502))
     const report = trackedReporter(target)
 
     await report('pending', 'Analysing')
@@ -165,18 +155,18 @@ describe('trackedReporter', () => {
     await report('success', 'Analysed')
 
     // The final status was still tried, but there is no pending one to close.
-    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(request).toHaveBeenCalledTimes(2)
     expect(note()).toBe('')
   })
 
   it('leaves nothing when no status could be opened', async () => {
-    fetch.mockResolvedValue(new Response('{}', { status: 403 }))
+    request.mockResolvedValue(answer(403, '{}'))
     const report = trackedReporter(target)
 
     await report('pending', 'Analysing')
     await report('success', 'Analysed')
 
-    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(request).toHaveBeenCalledTimes(1)
     expect(note()).toBe('')
   })
 })
@@ -209,7 +199,7 @@ describe('the post step', () => {
   })
 
   it('posts the state the note says where the runner says, with the token from the inputs', async () => {
-    fetch.mockResolvedValue(new Response('{}', { status: 201 }))
+    request.mockResolvedValue(answer(201, '{}'))
     core.getState.mockReturnValue(
       JSON.stringify({
         state: 'success',
@@ -223,7 +213,7 @@ describe('the post step', () => {
 
     await reportInterrupted()
 
-    expect(String(fetch.mock.calls[0][0])).toBe(
+    expect(request.mock.calls[0][0]).toBe(
       'https://api.github.com/repos/owner/repo/statuses/head-sha'
     )
     expect(sent()).toMatchObject({
@@ -232,7 +222,7 @@ describe('the post step', () => {
       context: 'Sonar fork analysis (acme_app)',
       target_url: 'https://github.com/owner/repo/actions/runs/42'
     })
-    expect(fetch.mock.calls[0][1]!.headers).toMatchObject({
+    expect(request.mock.calls[0][1]!.headers).toMatchObject({
       Authorization: 'Bearer input-token'
     })
   })
@@ -247,7 +237,7 @@ describe('the post step', () => {
 
     await reportInterrupted()
 
-    expect(fetch).not.toHaveBeenCalled()
+    expect(request).not.toHaveBeenCalled()
     expect(core.warning).toHaveBeenCalledWith(
       'Not posting the final status: its note is damaged'
     )
@@ -258,6 +248,6 @@ describe('the post step', () => {
 
     await reportInterrupted()
 
-    expect(fetch).not.toHaveBeenCalled()
+    expect(request).not.toHaveBeenCalled()
   })
 })

@@ -1,4 +1,5 @@
 import type { components } from '@octokit/openapi-webhooks-types'
+import { request } from './http.js'
 import { reason, type Reason } from './summary.js'
 
 // The payloads the action reads, as GitHub documents them. GitHub writes the file, so its shape is
@@ -52,7 +53,7 @@ async function findPullRequests(
     head: `${owner}:${branch}`,
     per_page: '100'
   })
-  const response = await fetch(
+  const response = await request(
     `${context.apiUrl}/repos/${context.repository}/pulls?${query.toString()}`,
     {
       headers: {
@@ -66,7 +67,7 @@ async function findPullRequests(
       `Could not look up the pull request: GitHub answered ${response.status}`
     )
   }
-  return ((await response.json()) as ApiPullRequest[])
+  return (response.json() as ApiPullRequest[])
     .filter((pull) => pull.head.sha === sha)
     .map((pull) => ({
       key: String(pull.number),
@@ -118,7 +119,7 @@ export async function pullRequestGone(
   head: { repository: string; branch: string; sha: string },
   number: number
 ): Promise<boolean> {
-  const response = await fetch(
+  const response = await request(
     `${context.apiUrl}/repos/${context.repository}/pulls/${String(number)}`,
     {
       headers: {
@@ -133,7 +134,7 @@ export async function pullRequestGone(
       `Could not look up the pull request: GitHub answered ${response.status}`
     )
   }
-  const pull = (await response.json()) as {
+  const pull = response.json() as {
     state: string
     head: { sha: string; ref: string; repo: { full_name: string } | null }
   }

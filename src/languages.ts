@@ -1,3 +1,4 @@
+import { request, type Answer } from './http.js'
 import { retry } from './retry.js'
 
 // The languages whose analyzers the fixtures run under traps on both paths. iac finds some of them by
@@ -89,14 +90,6 @@ export function languagesHost(
 const failure = (reason: string): Error =>
   new Error(`Could not get the server's languages: ${reason}`)
 
-// Node's errors keep the reason a request failed, such as a certificate it can't verify, in cause.
-function reasonOf(error: unknown): string {
-  if (!(error instanceof Error)) return String(error)
-  if (error.cause instanceof Error)
-    return `${error.message} (${error.cause.message})`
-  return error.message
-}
-
 export async function serverLanguages(
   host: string,
   token: string
@@ -107,10 +100,10 @@ export async function serverLanguages(
   } catch {
     throw failure(`${host} is not a URL`)
   }
-  let response: Response
+  let response: Answer
   try {
     response = await retry(async () => {
-      const answer = await fetch(url, {
+      const answer = await request(url, {
         headers: { Authorization: `Bearer ${token}` }
       })
       if (answer.status >= 500)
@@ -118,12 +111,12 @@ export async function serverLanguages(
       return answer
     })
   } catch (error) {
-    throw failure(reasonOf(error))
+    throw failure((error as Error).message)
   }
   if (!response.ok) throw failure(`${host} answered ${response.status}`)
   let body: unknown
   try {
-    body = await response.json()
+    body = response.json()
   } catch {
     throw failure(`${host} answered something other than JSON`)
   }

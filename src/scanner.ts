@@ -1,5 +1,4 @@
 import * as core from '@actions/core'
-import { HttpClient } from '@actions/http-client'
 import * as tc from '@actions/tool-cache'
 import type { PublicKey } from 'openpgp'
 import {
@@ -13,6 +12,8 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { request, type Answer } from './http.js'
+import { retry } from './retry.js'
 import {
   SONARSOURCE_KEY,
   checkSignature,
@@ -99,39 +100,42 @@ function keep(path: string, bytes: Buffer): void {
   }
 }
 
+// How long the toolkit's downloads let a server stay silent.
+const DOWNLOAD_TIMEOUT = 180_000
+
+// The statuses a later attempt may cure, as the toolkit's downloads take them.
+function temporary(status: number): boolean {
+  return status >= 500 || status === 408 || status === 429
+}
+
 async function download(url: string): Promise<Buffer> {
-  let file: string
+  let answer: Answer
   try {
-    file = await tc.downloadTool(url)
+    answer = await retry(async () => {
+      const attempt = await request(url, { timeout: DOWNLOAD_TIMEOUT })
+      if (temporary(attempt.status))
+        throw new Error(`HTTP ${String(attempt.status)}`)
+      return attempt
+    })
   } catch (error) {
-    if (error instanceof tc.HTTPError && error.httpStatusCode === 404)
-      throw new Error(
-        `${url} doesn't exist. Check that scanner-version names a released scanner CLI.`,
-        { cause: error }
-      )
     throw new Error(`Could not download ${url}: ${message(error)}`, {
       cause: error
     })
   }
-  try {
-    return readFileSync(file)
-  } finally {
-    rmSync(file, { force: true })
-  }
+  if (answer.status === 404)
+    throw new Error(
+      `${url} doesn't exist. Check that scanner-version names a released scanner CLI.`
+    )
+  if (!answer.ok)
+    throw new Error(`Could not download ${url}: HTTP ${String(answer.status)}`)
+  return answer.body
 }
 
-// No retries and a short timeout: the other key server is the fallback. A stalled one would hold up
-// every run.
-const keyClient = new HttpClient('sonar-fork-analysis', undefined, {
-  socketTimeout: 30_000
-})
-
+// No retries: the other key server is the fallback.
 async function keyCopy(url: string, fingerprint: string): Promise<PublicKey> {
-  const response = await keyClient.get(url)
-  const body = await response.readBody()
-  if (response.message.statusCode !== 200)
-    throw new Error(`HTTP ${String(response.message.statusCode)}`)
-  return readSigningKey(body, fingerprint)
+  const answer = await request(url)
+  if (answer.status !== 200) throw new Error(`HTTP ${String(answer.status)}`)
+  return readSigningKey(answer.body.toString(), fingerprint)
 }
 
 // The key from every key server that answers with it.

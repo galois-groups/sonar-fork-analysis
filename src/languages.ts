@@ -1,5 +1,9 @@
+import { exec } from '@actions/exec'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { request, type Answer } from './http.js'
+import { parseProperties } from './properties.js'
 import { retry } from './retry.js'
+import { ErrorLines, ToolFailure } from './tool-errors.js'
 
 // The languages whose analyzers the fixtures run under traps on both paths. iac finds some of them by
 // content in YAML and JSON files, whatever their patterns: Kubernetes, GitHub Actions, CloudFormation,
@@ -68,23 +72,55 @@ export function definitions(buildArguments: string[]): [string, string][] {
   return defined
 }
 
-// The server the scanner will talk to, so the languages are the ones it detects files against.
-export function languagesHost(
-  hostUrl: string,
-  buildArguments: string[]
-): string {
-  const defined = definitions(buildArguments)
-  const argument = (key: string): string | undefined =>
-    defined.findLast(([name]) => name === key)?.[1]
-  let host =
-    argument('sonar.host.url') ||
-    hostUrl ||
-    process.env.SONAR_HOST_URL ||
-    (argument('sonar.region') === 'us'
-      ? 'https://sonarqube.us'
-      : 'https://sonarcloud.io')
-  while (host.endsWith('/')) host = host.slice(0, -1)
-  return host
+// A CLI that ignored simulation mode would analyse with every language on. Through a proxy that refuses
+// connections, it fails at its first request instead. The proxy doesn't change the server it names.
+export const OFFLINE_PROXY = [
+  '-Dsonar.scanner.proxyHost=127.0.0.1',
+  '-Dsonar.scanner.proxyPort=9'
+]
+
+// The server the scanner will talk to, so the languages are the ones it detects files against. The
+// scanner reads it from many places, even its JSON parameters and SONAR_SCANNER_OPTS, so the action
+// asks the scanner itself. In simulation mode it writes the settings it resolved and stops before it
+// contacts a server. That file lists the whole environment, so it never stays.
+export async function scannerServer(
+  scanner: string,
+  args: readonly string[],
+  options: { cwd: string; env: Record<string, string> },
+  dump: string
+): Promise<string> {
+  const errors = new ErrorLines('scanner')
+  try {
+    const exitCode = await exec(
+      scanner,
+      [
+        ...args,
+        ...OFFLINE_PROXY,
+        `-Dsonar.scanner.internal.dumpToFile=${dump}`
+      ],
+      {
+        ...options,
+        ignoreReturnCode: true,
+        listeners: { stdout: errors.stdout, stderr: errors.stderr }
+      }
+    )
+    if (exitCode !== 0)
+      throw new ToolFailure(
+        `The Sonar scanner failed with exit code ${exitCode} when asked which server it uses`,
+        errors.end()
+      )
+    let host = existsSync(dump)
+      ? parseProperties(readFileSync(dump, 'utf8')).get('sonar.host.url')
+      : undefined
+    if (!host)
+      throw new Error(
+        "The Sonar scanner didn't name its server in simulation mode, so the action can't tell which languages to turn off"
+      )
+    while (host.endsWith('/')) host = host.slice(0, -1)
+    return host
+  } finally {
+    rmSync(dump, { force: true })
+  }
 }
 
 const failure = (reason: string): Error =>

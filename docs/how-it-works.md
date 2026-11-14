@@ -100,6 +100,11 @@ change it. If it stops working, the build fails with a message that no analysis
 settings were written. This project's tests keep up with the latest plugins and
 npm scanner, so such a change should show up here first.
 
+The Sonar workflow runs the scanner CLI once in this mode too, to learn which
+server the scanner will use. That run goes through a proxy that refuses
+connections, so a scanner that ignored the mode would reach no server. If no
+server is named, the Sonar workflow analyses nothing.
+
 The npm scanner writes its settings in a format of its own, which the action
 converts. Before it writes them, it would ask the server for its version, its
 Java and its engine. The action skips all three, so from `@sonar/scan` 5.0.0 on,
@@ -194,12 +199,15 @@ On the fork path, only the analyzers of the
 [tested languages](../README.md#languages-on-pull-requests-from-forks) run. The
 engine loads most analyzers only once it finds a file of their language. It runs
 each analyzer only on those files. So the action asks the server which languages
-it knows. For each language that isn't tested, it sets
-`sonar.lang.patterns.<language>` to a pattern no file can match. Files of those
-languages are still indexed, but without a language. Their analyzers never load
-in the job that has the token. `sonar.lang.patterns.<language>` replaces the
-language's own file suffixes and patterns. So the build can still carry those,
-but they can't turn a language back on.
+it knows. To learn which server the scanner will use, the action first runs the
+scanner in simulation mode, the way the build collects its settings. The scanner
+writes the settings it resolved and stops before it contacts a server. For each
+language that isn't tested, the action sets `sonar.lang.patterns.<language>` to
+a pattern no file can match. Files of those languages are still indexed, but
+without a language. Their analyzers never load in the job that has the token.
+`sonar.lang.patterns.<language>` replaces the language's own file suffixes and
+patterns. So the build can still carry those, but they can't turn a language
+back on.
 
 Without the server's list, the action can't know which languages to turn off. So
 if it can't get the list, it stops without analysing. All this relies on how the

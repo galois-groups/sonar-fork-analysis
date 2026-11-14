@@ -37,7 +37,7 @@ import { jobEnvironment, toolEnvironment } from './environment.js'
 import { readInputs, type Inputs } from './inputs.js'
 import {
   definitions,
-  languagesHost,
+  scannerServer,
   serverLanguages,
   untestedLanguages
 } from './languages.js'
@@ -633,55 +633,55 @@ async function analyzeCommit(
   const properties = resolved.properties
   if (!properties.has('sonar.projectBaseDir'))
     properties.set('sonar.projectBaseDir', workspace)
-  const languages = await serverLanguages(
-    languagesHost(inputs.hostUrl, inputs.buildArguments),
-    inputs.token
-  )
-  const trusted = trustedProperties(
-    inputs,
-    { headSha: origin.headSha, pullRequest, branch: origin.branch },
-    join(temp, 'scannerwork'),
-    languages
-  )
-  for (const [key, value] of trusted) properties.set(key, value)
+  const scanner = await installScanner(inputs.scannerVersion)
+  const env = toolEnvironment()
+  // Java names files in the locale's encoding; without a UTF-8 one, e.g. in a bare container, it reads
+  // a non-ASCII name as '?', which is not the path checked here.
+  if (process.platform === 'linux') env.LC_ALL = 'C.UTF-8'
+  // Not the checkout: the engine starts tools in its working directory, e.g. dotnet build -version for
+  // its analytics, and they read their configuration there. The settings name every path in full.
+  const cwd = join(temp, 'run')
+  mkdirSync(cwd)
   const settingsFile = join(temp, 'sonar-project.properties')
-  writeFileSync(settingsFile, formatProperties(properties))
+  const args = [`-Dproject.settings=${settingsFile}`, ...inputs.buildArguments]
+  const settings = (languages: string[]): void => {
+    const trusted = trustedProperties(
+      inputs,
+      { headSha: origin.headSha, pullRequest, branch: origin.branch },
+      join(temp, 'scannerwork'),
+      languages
+    )
+    for (const [key, value] of trusted) properties.set(key, value)
+    writeFileSync(settingsFile, formatProperties(properties))
+  }
+  // The same settings and environment as the analysis, without the languages it doesn't know yet.
+  settings([])
+  const host = await withoutCommands(() =>
+    scannerServer(
+      scanner,
+      args,
+      { cwd, env: { ...env } },
+      join(temp, 'server.properties')
+    )
+  )
+  const languages = await serverLanguages(host, inputs.token)
+  settings(languages)
 
   const { off, turnedOn } = logUntestedLanguages(
     untestedLanguages(languages),
     inputs.buildArguments
   )
-  const scanner = await installScanner(inputs.scannerVersion)
   core.info(`Analysing ${name}`)
-  const env = toolEnvironment()
   env.SONAR_TOKEN = inputs.token
-  // Java names files in the locale's encoding; without a UTF-8 one, e.g. in a bare container, it reads
-  // a non-ASCII name as '?', which is not the path checked here.
-  if (process.platform === 'linux') env.LC_ALL = 'C.UTF-8'
-  // The scanner prints module names and paths from the artifact and the checkout; none of it may
-  // pass for a workflow command.
-  const resume = randomUUID()
-  // Not the checkout: the engine starts tools in its working directory, e.g. dotnet build -version for
-  // its analytics, and they read their configuration there. The settings name every path in full.
-  const cwd = join(temp, 'run')
-  mkdirSync(cwd)
-  core.info(`::stop-commands::${resume}`)
   const errors = new ErrorLines('scanner')
-  let exitCode: number
-  try {
-    exitCode = await exec(
-      scanner,
-      [`-Dproject.settings=${settingsFile}`, ...inputs.buildArguments],
-      {
-        cwd,
-        env,
-        ignoreReturnCode: true,
-        listeners: { stdout: errors.stdout, stderr: errors.stderr }
-      }
-    )
-  } finally {
-    core.info(`::${resume}::`)
-  }
+  const exitCode = await withoutCommands(() =>
+    exec(scanner, args, {
+      cwd,
+      env,
+      ignoreReturnCode: true,
+      listeners: { stdout: errors.stdout, stderr: errors.stderr }
+    })
+  )
   if (exitCode !== 0)
     throw new ToolFailure(
       `The Sonar scanner failed with exit code ${exitCode}`,
@@ -705,6 +705,18 @@ async function analyzeCommit(
     })
   )
   return { analysed: true }
+}
+
+// The scanner prints module names and paths from the artifact and the checkout; none of it may pass
+// for a workflow command.
+async function withoutCommands<T>(run: () => Promise<T>): Promise<T> {
+  const resume = randomUUID()
+  core.info(`::stop-commands::${resume}`)
+  try {
+    return await run()
+  } finally {
+    core.info(`::${resume}::`)
+  }
 }
 
 function logUntestedLanguages(

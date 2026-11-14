@@ -1,4 +1,4 @@
-import { A as warning, B as __commonJSMin, C as getInput, D as notice, E as isDebug, F as BearerCredentialHandler, G as __toESM, H as __exportAll, I as HttpClient, L as HttpCodes, M as mkdirP, N as rmRF, O as setFailed, P as which, R as require_undici, S as error, T as info, U as __require, V as __esmMin, W as __toCommonJS, _ as toolEnvironment, b as retry$2, c as resetWarnings, d as warnedLeftOut, f as warningCount, g as jobEnvironment, h as secret, i as trackedReporter, j as exec, k as setSecret, l as warn, m as redacted, o as prepareCheckout, p as forgetSecrets, r as runStatusTarget, s as verifyCheckout, t as noReporter, u as warnLeftOut, v as realLocation, w as getMultilineInput, x as debug, y as realPath, z as require_tunnel } from "./shared.js";
+import { A as setSecret, B as require_tunnel, C as error, D as isDebug, E as info, F as which, G as __toCommonJS, H as __esmMin, I as BearerCredentialHandler, K as __toESM, L as HttpClient, M as exec, N as mkdirP, O as notice, P as rmRF, R as HttpCodes, S as debug, T as getMultilineInput, U as __exportAll, V as __commonJSMin, W as __require, _ as toolEnvironment, b as retry$2, c as resetWarnings, d as warnedLeftOut, f as warningCount, g as jobEnvironment, h as secret, i as trackedReporter, j as warning, k as setFailed, l as warn, m as redacted, o as prepareCheckout, p as forgetSecrets, r as runStatusTarget, s as verifyCheckout, t as noReporter, u as warnLeftOut, v as realLocation, w as getInput, x as request$1, y as realPath, z as require_undici } from "./shared.js";
 import os, { EOL } from "os";
 import * as crypto$3 from "crypto";
 import * as fs$2 from "fs";
@@ -77764,11 +77764,6 @@ function languagesHost(hostUrl, buildArguments) {
 	return host;
 }
 var failure = (reason) => /* @__PURE__ */ new Error(`Could not get the server's languages: ${reason}`);
-function reasonOf(error) {
-	if (!(error instanceof Error)) return String(error);
-	if (error.cause instanceof Error) return `${error.message} (${error.cause.message})`;
-	return error.message;
-}
 async function serverLanguages(host, token) {
 	let url;
 	try {
@@ -77779,17 +77774,17 @@ async function serverLanguages(host, token) {
 	let response;
 	try {
 		response = await retry$2(async () => {
-			const answer = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+			const answer = await request$1(url, { headers: { Authorization: `Bearer ${token}` } });
 			if (answer.status >= 500) throw new Error(`${host} answered ${answer.status}`);
 			return answer;
 		});
 	} catch (error) {
-		throw failure(reasonOf(error));
+		throw failure(error.message);
 	}
 	if (!response.ok) throw failure(`${host} answered ${response.status}`);
 	let body;
 	try {
-		body = await response.json();
+		body = response.json();
 	} catch {
 		throw failure(`${host} answered something other than JSON`);
 	}
@@ -108915,12 +108910,12 @@ async function findPullRequests(context, owner, branch, sha) {
 		head: `${owner}:${branch}`,
 		per_page: "100"
 	});
-	const response = await fetch(`${context.apiUrl}/repos/${context.repository}/pulls?${query.toString()}`, { headers: {
+	const response = await request$1(`${context.apiUrl}/repos/${context.repository}/pulls?${query.toString()}`, { headers: {
 		Accept: "application/vnd.github+json",
 		Authorization: `Bearer ${context.token}`
 	} });
 	if (!response.ok) throw new Error(`Could not look up the pull request: GitHub answered ${response.status}`);
-	return (await response.json()).filter((pull) => pull.head.sha === sha).map((pull) => ({
+	return response.json().filter((pull) => pull.head.sha === sha).map((pull) => ({
 		key: String(pull.number),
 		branch: pull.head.ref,
 		base: pull.base.ref
@@ -108944,13 +108939,13 @@ function goneHint(candidates, hint) {
 	return key && !candidates.some((pull) => pull.key === key) ? Number(key) : void 0;
 }
 async function pullRequestGone(context, head, number) {
-	const response = await fetch(`${context.apiUrl}/repos/${context.repository}/pulls/${String(number)}`, { headers: {
+	const response = await request$1(`${context.apiUrl}/repos/${context.repository}/pulls/${String(number)}`, { headers: {
 		Accept: "application/vnd.github+json",
 		Authorization: `Bearer ${context.token}`
 	} });
 	if (response.status === 404) return false;
 	if (!response.ok) throw new Error(`Could not look up the pull request: GitHub answered ${response.status}`);
-	const pull = await response.json();
+	const pull = response.json();
 	return pull.head.repo?.full_name.toLowerCase() === head.repository.toLowerCase() && pull.head.ref === head.branch && (pull.state === "closed" || pull.head.sha !== head.sha);
 }
 async function resolveOrigin(context) {

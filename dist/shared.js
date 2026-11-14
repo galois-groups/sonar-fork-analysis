@@ -16260,11 +16260,11 @@ var HttpCodes;
 	HttpCodes[HttpCodes["ServiceUnavailable"] = 503] = "ServiceUnavailable";
 	HttpCodes[HttpCodes["GatewayTimeout"] = 504] = "GatewayTimeout";
 })(HttpCodes || (HttpCodes = {}));
-var Headers;
+var Headers$1;
 (function(Headers) {
 	Headers["Accept"] = "accept";
 	Headers["ContentType"] = "content-type";
-})(Headers || (Headers = {}));
+})(Headers$1 || (Headers$1 = {}));
 var MediaTypes;
 (function(MediaTypes) {
 	MediaTypes["ApplicationJson"] = "application/json";
@@ -16398,7 +16398,7 @@ var HttpClient = class {
 	*/
 	getJson(requestUrl_1) {
 		return __awaiter$9(this, arguments, void 0, function* (requestUrl, additionalHeaders = {}) {
-			additionalHeaders[Headers.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers.Accept, MediaTypes.ApplicationJson);
+			additionalHeaders[Headers$1.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers$1.Accept, MediaTypes.ApplicationJson);
 			const res = yield this.get(requestUrl, additionalHeaders);
 			return this._processResponse(res, this.requestOptions);
 		});
@@ -16406,8 +16406,8 @@ var HttpClient = class {
 	postJson(requestUrl_1, obj_1) {
 		return __awaiter$9(this, arguments, void 0, function* (requestUrl, obj, additionalHeaders = {}) {
 			const data = JSON.stringify(obj, null, 2);
-			additionalHeaders[Headers.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers.Accept, MediaTypes.ApplicationJson);
-			additionalHeaders[Headers.ContentType] = this._getExistingOrDefaultContentTypeHeader(additionalHeaders, MediaTypes.ApplicationJson);
+			additionalHeaders[Headers$1.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers$1.Accept, MediaTypes.ApplicationJson);
+			additionalHeaders[Headers$1.ContentType] = this._getExistingOrDefaultContentTypeHeader(additionalHeaders, MediaTypes.ApplicationJson);
 			const res = yield this.post(requestUrl, data, additionalHeaders);
 			return this._processResponse(res, this.requestOptions);
 		});
@@ -16415,8 +16415,8 @@ var HttpClient = class {
 	putJson(requestUrl_1, obj_1) {
 		return __awaiter$9(this, arguments, void 0, function* (requestUrl, obj, additionalHeaders = {}) {
 			const data = JSON.stringify(obj, null, 2);
-			additionalHeaders[Headers.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers.Accept, MediaTypes.ApplicationJson);
-			additionalHeaders[Headers.ContentType] = this._getExistingOrDefaultContentTypeHeader(additionalHeaders, MediaTypes.ApplicationJson);
+			additionalHeaders[Headers$1.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers$1.Accept, MediaTypes.ApplicationJson);
+			additionalHeaders[Headers$1.ContentType] = this._getExistingOrDefaultContentTypeHeader(additionalHeaders, MediaTypes.ApplicationJson);
 			const res = yield this.put(requestUrl, data, additionalHeaders);
 			return this._processResponse(res, this.requestOptions);
 		});
@@ -16424,8 +16424,8 @@ var HttpClient = class {
 	patchJson(requestUrl_1, obj_1) {
 		return __awaiter$9(this, arguments, void 0, function* (requestUrl, obj, additionalHeaders = {}) {
 			const data = JSON.stringify(obj, null, 2);
-			additionalHeaders[Headers.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers.Accept, MediaTypes.ApplicationJson);
-			additionalHeaders[Headers.ContentType] = this._getExistingOrDefaultContentTypeHeader(additionalHeaders, MediaTypes.ApplicationJson);
+			additionalHeaders[Headers$1.Accept] = this._getExistingOrDefaultHeader(additionalHeaders, Headers$1.Accept, MediaTypes.ApplicationJson);
+			additionalHeaders[Headers$1.ContentType] = this._getExistingOrDefaultContentTypeHeader(additionalHeaders, MediaTypes.ApplicationJson);
 			const res = yield this.patch(requestUrl, data, additionalHeaders);
 			return this._processResponse(res, this.requestOptions);
 		});
@@ -16606,14 +16606,14 @@ var HttpClient = class {
 	_getExistingOrDefaultContentTypeHeader(additionalHeaders, _default) {
 		let clientHeader;
 		if (this.requestOptions && this.requestOptions.headers) {
-			const headerValue = lowercaseKeys(this.requestOptions.headers)[Headers.ContentType];
+			const headerValue = lowercaseKeys(this.requestOptions.headers)[Headers$1.ContentType];
 			if (headerValue) {
 				if (typeof headerValue === "number") clientHeader = String(headerValue);
 				else if (Array.isArray(headerValue)) clientHeader = headerValue.join(", ");
 				else clientHeader = headerValue;
 			}
 		}
-		const additionalValue = additionalHeaders[Headers.ContentType];
+		const additionalValue = additionalHeaders[Headers$1.ContentType];
 		if (additionalValue !== void 0) {
 			if (typeof additionalValue === "number") return String(additionalValue);
 			else if (Array.isArray(additionalValue)) return additionalValue.join(", ");
@@ -17875,6 +17875,21 @@ function saveState(name, value) {
 function getState(name) {
 	return process.env[`STATE_${name}`] || "";
 }
+// src/http.ts
+async function request(url, { method = "GET", headers, body } = {}) {
+	const answer = await new HttpClient("sonar-fork-analysis").request(method, url, body ?? null, headers);
+	const text = await answer.readBody();
+	const { rawHeaders, statusCode } = answer.message;
+	const received = new Headers();
+	for (let i = 0; i + 1 < rawHeaders.length; i += 2) received.append(rawHeaders[i], rawHeaders[i + 1]);
+	const status = statusCode;
+	return {
+		status,
+		ok: status >= 200 && status < 300,
+		headers: received,
+		json: () => JSON.parse(text)
+	};
+}
 // src/retry.ts
 var CHECKOUT_POLICY = {
 	attempts: 3,
@@ -18164,11 +18179,12 @@ function statusReporter(target) {
 		const url = `${target.apiUrl}/repos/${target.repository}/statuses/${target.sha}`;
 		let response;
 		try {
-			response = await fetch(url, {
+			response = await request(url, {
 				method: "POST",
 				headers: {
 					Accept: "application/vnd.github+json",
-					Authorization: `Bearer ${target.token}`
+					Authorization: `Bearer ${target.token}`,
+					"Content-Type": "application/json"
 				},
 				body: JSON.stringify({
 					state,
@@ -18250,6 +18266,6 @@ function readNote(saved) {
 		return;
 	}
 }
-export { warning as A, __commonJSMin as B, getInput as C, notice as D, isDebug as E, BearerCredentialHandler as F, __toESM as G, __exportAll as H, HttpClient as I, HttpCodes as L, mkdirP as M, rmRF as N, setFailed as O, which as P, require_undici as R, error as S, info as T, __require as U, __esmMin as V, __toCommonJS as W, toolEnvironment as _, cleanUpCheckout as a, retry as b, resetWarnings as c, warnedLeftOut as d, warningCount as f, jobEnvironment as g, secret as h, trackedReporter as i, exec as j, setSecret as k, warn as l, redacted as m, reportInterrupted as n, prepareCheckout as o, forgetSecrets as p, runStatusTarget as r, verifyCheckout as s, noReporter as t, warnLeftOut as u, realLocation as v, getMultilineInput as w, debug as x, realPath as y, require_tunnel as z };
+export { setSecret as A, require_tunnel as B, error as C, isDebug as D, info as E, which as F, __toCommonJS as G, __esmMin as H, BearerCredentialHandler as I, __toESM as K, HttpClient as L, exec as M, mkdirP as N, notice as O, rmRF as P, HttpCodes as R, debug as S, getMultilineInput as T, __exportAll as U, __commonJSMin as V, __require as W, toolEnvironment as _, cleanUpCheckout as a, retry as b, resetWarnings as c, warnedLeftOut as d, warningCount as f, jobEnvironment as g, secret as h, trackedReporter as i, warning as j, setFailed as k, warn as l, redacted as m, reportInterrupted as n, prepareCheckout as o, forgetSecrets as p, runStatusTarget as r, verifyCheckout as s, noReporter as t, warnLeftOut as u, realLocation as v, getInput as w, request as x, realPath as y, require_undici as z };
 
 //# sourceMappingURL=shared.js.map

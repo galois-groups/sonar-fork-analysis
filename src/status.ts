@@ -1,5 +1,6 @@
 import * as core from '@actions/core'
 import { readFileSync } from 'node:fs'
+import { request, type Answer } from './http.js'
 import type { WorkflowRunEvent } from './origin.js'
 import { warn } from './warnings.js'
 
@@ -27,13 +28,14 @@ export function statusReporter(target: StatusTarget): Reporter {
   return async (state, description) => {
     if (!enabled) return false
     const url = `${target.apiUrl}/repos/${target.repository}/statuses/${target.sha}`
-    let response: Response
+    let response: Answer
     try {
-      response = await fetch(url, {
+      response = await request(url, {
         method: 'POST',
         headers: {
           Accept: 'application/vnd.github+json',
-          Authorization: `Bearer ${target.token}`
+          Authorization: `Bearer ${target.token}`,
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           state,

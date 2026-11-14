@@ -109,6 +109,25 @@ export default defineConfig(
     }
   })),
   {
+    files: ['src/**'],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        {
+          globals: [
+            {
+              name: 'fetch',
+              message:
+                "Use request() from http.ts: it goes through the runner's proxy."
+            }
+          ],
+          // globalThis.fetch too.
+          checkGlobalObject: true
+        }
+      ]
+    }
+  },
+  {
     files: ['__tests__/**', '__fixtures__/**'],
     extends: [vitest.configs.recommended],
     // Tests read JSON and mock arguments loosely, and write mocks of async functions as async: a value

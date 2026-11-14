@@ -1,12 +1,4 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  vi,
-  type MockInstance
-} from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   cpSync,
   existsSync,
@@ -25,11 +17,13 @@ import * as artifact from '../__fixtures__/artifact.js'
 import * as core from '../__fixtures__/core.js'
 import { linux } from '../__fixtures__/platform.js'
 import { exec, getExecOutput } from '../__fixtures__/exec.js'
+import { answer, request } from '../__fixtures__/http.js'
 import { NO_FILE } from '../src/languages.js'
 
 // Mocks must be declared before the module under test is imported.
 vi.doMock('@actions/core', () => core)
 vi.doMock('@actions/exec', () => ({ exec, getExecOutput }))
+vi.doMock('../src/http.js', () => ({ request }))
 const installScanner = vi.fn<(version?: string) => Promise<string>>(
   async () => '/opt/sonar-scanner/bin/sonar-scanner'
 )
@@ -162,9 +156,7 @@ describe('run', () => {
       return 0
     })
     // The failure status of a refused run.
-    const fetch = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(new Response(null, { status: 201 }))
+    request.mockResolvedValue(answer(201))
     const after = async (
       runEvent: string,
       repository: string,
@@ -228,7 +220,7 @@ describe('run', () => {
         expect.stringContaining('Direct analysis on workflow_run')
       )
     } finally {
-      fetch.mockRestore()
+      request.mockReset()
     }
   })
 
@@ -1268,13 +1260,12 @@ describe('run in analyze mode', () => {
       head: { sha: 'head-sha', ref: 'feature' },
       base: { ref: base }
     })
-    const fetch = vi.spyOn(globalThis, 'fetch')
     const scan = async (hint?: number): Promise<string | undefined> => {
       // GitHub has never heard of any other pull request.
-      fetch.mockImplementation(async (url) =>
-        /\/pulls\/\d+$/.test(String(url))
-          ? new Response('{}', { status: 404 })
-          : new Response(JSON.stringify([pull(7, 'main'), pull(8, 'release')]))
+      request.mockImplementation(async (url) =>
+        /\/pulls\/\d+$/.test(url)
+          ? answer(404, '{}')
+          : answer(200, [pull(7, 'main'), pull(8, 'release')])
       )
       exec.mockClear()
       prepared({}, hint)
@@ -1292,12 +1283,10 @@ describe('run in analyze mode', () => {
     expect(core.warning).toHaveBeenCalledWith(
       expect.stringContaining('2 open pull requests')
     )
-    fetch.mockRestore()
+    request.mockReset()
   })
 
   describe('on workflow_run', () => {
-    let fetch: MockInstance<typeof globalThis.fetch>
-
     // Starts the analysis the way Fixtures Sonar does: after a build of owner/repo or of a fork.
     function triggeredBy(event: string, repository: string): void {
       process.env.GITHUB_EVENT_NAME = 'workflow_run'
@@ -1321,7 +1310,7 @@ describe('run in analyze mode', () => {
     }
 
     function statuses(): string[] {
-      return fetch.mock.calls
+      return request.mock.calls
         .filter(([, init]) => init?.method === 'POST')
         .map(([, init]) => {
           const { state, description } = JSON.parse(String(init!.body)) as {
@@ -1333,25 +1322,21 @@ describe('run in analyze mode', () => {
     }
 
     beforeEach(() => {
-      fetch = vi
-        .spyOn(globalThis, 'fetch')
-        .mockImplementation(async (_url, init) =>
-          init?.method === 'POST'
-            ? new Response('{}', { status: 201 })
-            : new Response(
-                JSON.stringify([
-                  {
-                    number: 7,
-                    head: { sha: 'head-sha', ref: 'main' },
-                    base: { ref: 'main' }
-                  }
-                ])
-              )
-        )
+      request.mockImplementation(async (_url, init) =>
+        init?.method === 'POST'
+          ? answer(201, '{}')
+          : answer(200, [
+              {
+                number: 7,
+                head: { sha: 'head-sha', ref: 'main' },
+                base: { ref: 'main' }
+              }
+            ])
+      )
     })
 
     afterEach(() => {
-      fetch.mockRestore()
+      request.mockReset()
     })
 
     it('reports the analysis on the analysed commit', async () => {
@@ -1368,11 +1353,11 @@ describe('run in analyze mode', () => {
     it('leaves the status to the post step when its end cannot be reported', async () => {
       triggeredBy('push', 'owner/repo')
       prepared({})
-      fetch.mockImplementation(
-        async (_url, init) =>
-          new Response('{}', {
-            status: statuses().length > 1 && init?.method === 'POST' ? 502 : 201
-          })
+      request.mockImplementation(async (_url, init) =>
+        answer(
+          statuses().length > 1 && init?.method === 'POST' ? 502 : 201,
+          '{}'
+        )
       )
 
       await run()
@@ -1399,14 +1384,12 @@ describe('run in analyze mode', () => {
 
     // GitHub's answers about single pull requests, on top of the list of open ones.
     function knowing(pulls: Record<string, unknown>): void {
-      const list = fetch.getMockImplementation()!
-      fetch.mockImplementation(async (url, init) => {
-        const number = /\/pulls\/(\d+)$/.exec(String(url))?.[1]
+      const list = request.getMockImplementation()!
+      request.mockImplementation(async (url, init) => {
+        const number = /\/pulls\/(\d+)$/.exec(url)?.[1]
         if (number === undefined) return list(url, init)
         const pull = pulls[number]
-        return pull
-          ? new Response(JSON.stringify(pull))
-          : new Response('{}', { status: 404 })
+        return pull ? answer(200, pull) : answer(404, '{}')
       })
     }
 
@@ -1564,7 +1547,7 @@ describe('run in analyze mode', () => {
     it('posts nothing for a pull request that has moved on', async () => {
       process.env.GITHUB_STEP_SUMMARY = join(project, 'summary.md')
       triggeredBy('pull_request', 'forker/repo')
-      fetch.mockImplementation(async () => new Response('[]'))
+      request.mockImplementation(async () => answer(200, '[]'))
 
       await run()
 
@@ -1604,18 +1587,17 @@ describe('run in analyze mode', () => {
 
     it('reports a failed pull request lookup on the commit GitHub named', async () => {
       triggeredBy('pull_request', 'forker/repo')
-      fetch.mockImplementation(
-        async (_url, init) =>
-          new Response('{}', { status: init?.method === 'POST' ? 201 : 500 })
+      request.mockImplementation(async (_url, init) =>
+        answer(init?.method === 'POST' ? 201 : 500, '{}')
       )
 
       await run()
 
       expect(statuses()).toEqual(['failure: The analysis failed, see the run'])
-      const posted = fetch.mock.calls.find(
+      const posted = request.mock.calls.find(
         ([, init]) => init?.method === 'POST'
       )!
-      expect(String(posted[0])).toMatch(/\/statuses\/head-sha$/)
+      expect(posted[0]).toMatch(/\/statuses\/head-sha$/)
       expect(core.setFailed).toHaveBeenCalledWith(
         expect.stringContaining('GitHub answered 500')
       )
@@ -1638,7 +1620,7 @@ describe('run in analyze mode', () => {
 
       await run()
 
-      const posted = fetch.mock.calls.find(
+      const posted = request.mock.calls.find(
         ([, init]) => init?.method === 'POST'
       )!
       expect(JSON.parse(String(posted[1]!.body))).toMatchObject({
@@ -1684,13 +1666,11 @@ describe('run in analyze mode', () => {
   })
 
   it('posts no status where the job itself shows on the pull request', async () => {
-    const fetch = vi.spyOn(globalThis, 'fetch')
     prepared({})
 
     await run()
 
-    expect(fetch).not.toHaveBeenCalled()
-    fetch.mockRestore()
+    expect(request).not.toHaveBeenCalled()
   })
 
   it('refuses a pull request whose branch name would expand into the token', async () => {

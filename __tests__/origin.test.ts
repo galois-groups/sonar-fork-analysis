@@ -1,11 +1,11 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import {
-  choosePullRequest,
-  goneHint,
-  pullRequestGone,
-  resolveOrigin,
-  type Context
-} from '../src/origin.js'
+import { answer, request } from '../__fixtures__/http.js'
+import type { Context } from '../src/origin.js'
+
+vi.doMock('../src/http.js', () => ({ request }))
+
+const { choosePullRequest, goneHint, pullRequestGone, resolveOrigin } =
+  await import('../src/origin.js')
 
 const base: Context = {
   eventName: '',
@@ -41,26 +41,24 @@ function workflowRun(
 }
 
 afterEach(() => {
-  vi.restoreAllMocks()
+  request.mockReset()
 })
 
 describe('resolveOrigin', () => {
   it('finds the pull request of a fork by its head', async () => {
-    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(
-        JSON.stringify([
-          {
-            number: 3,
-            head: { sha: 'old-sha', ref: 'feature' },
-            base: { ref: 'main' }
-          },
-          {
-            number: 7,
-            head: { sha: 'head-sha', ref: 'feature' },
-            base: { ref: 'main' }
-          }
-        ])
-      )
+    request.mockResolvedValue(
+      answer(200, [
+        {
+          number: 3,
+          head: { sha: 'old-sha', ref: 'feature' },
+          base: { ref: 'main' }
+        },
+        {
+          number: 7,
+          head: { sha: 'head-sha', ref: 'feature' },
+          base: { ref: 'main' }
+        }
+      ])
     )
 
     const origin = await resolveOrigin({
@@ -74,15 +72,15 @@ describe('resolveOrigin', () => {
       headSha: 'head-sha',
       pullRequests: [{ key: '7', branch: 'feature', base: 'main' }]
     })
-    const [url, init] = fetch.mock.calls[0]
-    expect(String(url)).toBe(
+    const [url, init] = request.mock.calls[0]
+    expect(url).toBe(
       'https://api.github.com/repos/owner/repo/pulls?state=open&head=forker%3Afeature&per_page=100'
     )
     expect(init!.headers).toMatchObject({ Authorization: 'Bearer gh-token' })
   })
 
   it('skips a pull request that has moved on since the build', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('[]'))
+    request.mockResolvedValue(answer(200, '[]'))
 
     const origin = await resolveOrigin({
       ...base,
@@ -93,8 +91,6 @@ describe('resolveOrigin', () => {
   })
 
   it('skips a run that names no branch to look the pull request up by', async () => {
-    const fetch = vi.spyOn(globalThis, 'fetch')
-
     const origin = await resolveOrigin({
       ...base,
       ...workflowRun('pull_request', null)
@@ -106,13 +102,11 @@ describe('resolveOrigin', () => {
         markdown: 'The run names no branch to find its pull request by.'
       }
     })
-    expect(fetch).not.toHaveBeenCalled()
+    expect(request).not.toHaveBeenCalled()
   })
 
   it('fails when GitHub refuses the lookup', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response('', { status: 403 })
-    )
+    request.mockResolvedValue(answer(403))
 
     await expect(
       resolveOrigin({ ...base, ...workflowRun('pull_request') })
@@ -240,13 +234,11 @@ describe('pullRequestGone', () => {
   const head = { repository: 'Forker/Repo', branch: 'feature', sha: 'head-sha' }
 
   afterEach(() => {
-    vi.restoreAllMocks()
+    request.mockReset()
   })
 
-  function answer(status: number, pull?: unknown) {
-    return vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(new Response(JSON.stringify(pull ?? {}), { status }))
+  function answers(status: number, pull?: unknown) {
+    return request.mockResolvedValue(answer(status, pull ?? {}))
   }
 
   const pull = (
@@ -260,9 +252,9 @@ describe('pullRequestGone', () => {
     ['closed with this head', pull('closed')],
     ['moved on to newer commits', pull('open', 'newer-sha')]
   ])('believes a pull request %s', async (_, found) => {
-    const fetch = answer(200, found)
+    answers(200, found)
     expect(await pullRequestGone(base, head, 8)).toBe(true)
-    expect(String(fetch.mock.calls[0][0])).toBe(
+    expect(request.mock.calls[0][0]).toBe(
       'https://api.github.com/repos/owner/repo/pulls/8'
     )
   })
@@ -278,12 +270,12 @@ describe('pullRequestGone', () => {
     ['from a deleted fork', 200, pull('closed', 'head-sha', 'feature', null)],
     ['that never existed', 404, undefined]
   ])('rejects a pull request %s', async (_, status, found) => {
-    answer(status, found)
+    answers(status, found)
     expect(await pullRequestGone(base, head, 8)).toBe(false)
   })
 
   it('fails when GitHub can not say', async () => {
-    answer(502)
+    answers(502)
     await expect(pullRequestGone(base, head, 8)).rejects.toThrow(
       'GitHub answered 502'
     )

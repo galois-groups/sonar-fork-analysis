@@ -73,8 +73,9 @@ Add a new job to the `needs` of its workflow's summary job. Otherwise its
 failure won't block a merge. Code scanning is the exception: the ruleset
 requires the results of CodeQL and zizmor instead.
 
-To publish a new version, create a release on GitHub with a new `vX.Y.Z` tag.
-Pick a commit whose checks on `main` all passed, including Fixtures Sonar. Tick
-"Publish this Action to the GitHub Marketplace" so that the Marketplace shows
-the new version. Keep the release marked as the latest. The Release workflow
-then points the major tag at it: `v2` for `v2.1.0`.
+To publish a new version, create a release on GitHub with a new `vX.Y.Z` tag on
+a commit of `main` whose checks all passed, Fixtures Sonar included. A ruleset
+refuses the tag if they didn't. Tick "Publish this Action to the GitHub
+Marketplace" so that the Marketplace shows the new version. Keep the release
+marked as the latest. The Release workflow then points the major tag at it: `v2`
+for `v2.1.0`. It refuses a commit that isn't on `main`.

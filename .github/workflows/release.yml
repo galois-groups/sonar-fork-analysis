@@ -32,6 +32,14 @@ jobs:
               );
               return;
             }
+            const { data: comparison } = await github.rest.repos.compareCommitsWithBasehead({
+              ...context.repo,
+              basehead: `${context.sha}...main`,
+            });
+            if (!['ahead', 'identical'].includes(comparison.status)) {
+              core.setFailed(`${tag} points at ${context.sha}, which isn't on main, so ${major} stays where it is.`);
+              return;
+            }
             const ref = `tags/${major}`;
             try {
               await github.rest.git.getRef({ ...context.repo, ref });

@@ -11,6 +11,7 @@ import {
 } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { BuildTool } from './build-tool.js'
+import { OFFLINE_PROXY } from './languages.js'
 import { realPath } from './real-path.js'
 import {
   isCheckoutPath,
@@ -26,10 +27,6 @@ import type { LeftOut } from './warnings.js'
 
 export const ARTIFACT_FORMAT = 1
 
-// A port that refuses connections: if the plugin ignored the simulation property, the build fails
-// instead of reaching a real server.
-const OFFLINE_HOST = 'http://127.0.0.1:9'
-
 // Reports sensors look for on their own when no path is configured, relative to each module.
 const IMPLICIT_REPORTS = [
   'target/site/jacoco/jacoco.xml',
@@ -41,9 +38,10 @@ type Root = 'workspace' | 'home'
 export type Roots = Record<Root, string>
 
 export function simulationProperties(dumpFile: string): string[] {
-  // Older plugins read the first name, current ones the second.
+  // Older plugins read the first name, current ones the second. Not an unreachable sonar.host.url:
+  // the scanner refuses a host next to the region a build may set.
   return [
-    `-Dsonar.host.url=${OFFLINE_HOST}`,
+    ...OFFLINE_PROXY,
     `-Dsonar.scanner.dumpToFile=${dumpFile}`,
     `-Dsonar.scanner.internal.dumpToFile=${dumpFile}`
   ]

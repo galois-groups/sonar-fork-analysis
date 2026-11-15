@@ -1,6 +1,14 @@
 // What the analysis does with an artifact the fork wrote, tried on generated artifacts: whatever is
 // in it, the checkout and everything outside it end up only as the rules below allow.
-import { describe, it, expect, afterEach } from 'vitest'
+import { test } from '@fast-check/vitest'
+import {
+  describe,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  afterEach
+} from 'vitest'
 import {
   lstatSync,
   mkdirSync,
@@ -44,9 +52,21 @@ function freshDirectories(): void {
   writeFileSync(join(outside, 'secret'), 'secret')
 }
 
-afterEach(() => {
-  if (root) rmSync(root, { recursive: true, force: true })
-})
+const removeDirectories = (): void => {
+  rmSync(root, { recursive: true, force: true })
+}
+
+// Fresh directories for each run of the calling describe's properties. With once, one set for all of
+// them, for code that only reads.
+function withFreshDirectories(once = false): void {
+  if (once) {
+    beforeAll(freshDirectories)
+    afterAll(removeDirectories)
+  } else {
+    beforeEach(freshDirectories)
+    afterEach(removeDirectories)
+  }
+}
 
 function file(path: string, content = 'x'): void {
   mkdirSync(dirname(path), { recursive: true })
@@ -121,24 +141,24 @@ describe('readManifest on any JSON', () => {
     })
   )
 
-  it('gives settings that are all text, or refuses the artifact', () => {
-    fc.assert(
-      fc.property(manifest, (value) => {
-        const { value: manifest, refusal = '' } = outcome(() =>
-          readManifest(JSON.stringify(value), 'it')
-        )
-        expect(refusal).toMatch(
-          /^(?:it (?:was prepared by an incompatible version|holds settings that are not all text).*)?$/s
-        )
-        for (const setting of Object.values(manifest?.settings ?? {}))
-          expect(typeof setting).toBe('string')
-      }),
-      { numRuns: 1000 }
-    )
-  })
+  test.prop([manifest], { numRuns: 1000 })(
+    'gives settings that are all text, or refuses the artifact',
+    (value) => {
+      const { value: manifest, refusal = '' } = outcome(() =>
+        readManifest(JSON.stringify(value), 'it')
+      )
+      expect(refusal).toMatch(
+        /^(?:it (?:was prepared by an incompatible version|holds settings that are not all text).*)?$/s
+      )
+      for (const setting of Object.values(manifest?.settings ?? {}))
+        expect(typeof setting).toBe('string')
+    }
+  )
 })
 
 describe('resolveSettings on any settings', () => {
+  withFreshDirectories(true)
+
   const pathKeys = [
     'sonar.sources',
     'sonar.tests',
@@ -235,34 +255,33 @@ describe('resolveSettings on any settings', () => {
     fc.dictionary(key, value).map((random) => ({ ...random, ...modules }))
   )
 
-  it('keeps no forbidden setting, no sonar.lang.patterns.*, no placeholder in values, no half character, and fails only by refusing', () => {
-    freshDirectories()
+  beforeAll(() => {
     mkdirSync(join(workspace, 'src'))
     mkdirSync(join(workspace, 'lib'))
-    const home = join(root, 'home')
-    fc.assert(
-      fc.property(settings, (settings) => {
-        const { value: resolved, refusal = '' } = outcome(() =>
-          resolveSettings(settings, workspace, home)
-        )
-        expect(refusal).toMatch(
-          /^(?:.*no base directory in the checkout|Invalid module id.*)?$/s
-        )
-        const properties = resolved?.properties ?? new Map<string, string>()
-        // The scanner expands placeholders in values only.
-        for (const [key, value] of properties) {
-          expect(placeholder.test(value)).toBe(false)
-          expect(/\p{Cs}/u.test(key + value)).toBe(false)
-        }
-        for (const forbiddenKey of forbidden)
-          for (const prefix of ['', 'm.', 'n.'])
-            expect(properties.has(prefix + forbiddenKey)).toBe(false)
-        for (const key of properties.keys())
-          expect(key).not.toMatch(/(?:^|\.)sonar\.lang\.patterns\./)
-      }),
-      { numRuns: 1000 }
-    )
   })
+
+  test.prop([settings], { numRuns: 1000 })(
+    'keeps no forbidden setting, no sonar.lang.patterns.*, no placeholder in values, no half character, and fails only by refusing',
+    (settings) => {
+      const { value: resolved, refusal = '' } = outcome(() =>
+        resolveSettings(settings, workspace, join(root, 'home'))
+      )
+      expect(refusal).toMatch(
+        /^(?:.*no base directory in the checkout|Invalid module id.*)?$/s
+      )
+      const properties = resolved?.properties ?? new Map<string, string>()
+      // The scanner expands placeholders in values only.
+      for (const [key, value] of properties) {
+        expect(placeholder.test(value)).toBe(false)
+        expect(/\p{Cs}/u.test(key + value)).toBe(false)
+      }
+      for (const forbiddenKey of forbidden)
+        for (const prefix of ['', 'm.', 'n.'])
+          expect(properties.has(prefix + forbiddenKey)).toBe(false)
+      for (const key of properties.keys())
+        expect(key).not.toMatch(/(?:^|\.)sonar\.lang\.patterns\./)
+    }
+  )
 })
 
 const segment = fc.constantFrom(
@@ -294,6 +313,8 @@ const pathText = fc.oneof(
 )
 
 describe('recreateLinks on any links', () => {
+  withFreshDirectories()
+
   // Mostly links that could be made, so the checks that refuse them are reached: a place a link may
   // or may not go, and the directories of the checkout set up below, links and .git among them.
   const linkPath = fc.oneof(
@@ -367,67 +388,57 @@ describe('recreateLinks on any links', () => {
     { weight: 1, arbitrary: fc.anything() }
   )
 
-  it('only adds links in node_modules to directories of the checkout outside .git', () => {
-    fc.assert(
-      fc.property(links, (links) => {
-        freshDirectories()
-        try {
-          mkdirSync(
-            join(workspace, 'node_modules/.pnpm/pkg/node_modules/pkg'),
-            {
-              recursive: true
-            }
-          )
-          mkdirSync(join(workspace, 'packages/a'), { recursive: true })
-          mkdirSync(join(workspace, 'src'))
-          mkdirSync(join(workspace, '.git/hooks'), { recursive: true })
-          symlinkSync(outside, join(workspace, 'out'))
-          symlinkSync('packages', join(workspace, 'lnk'))
-          // Committed links to the checkout itself and into .git, which only resolving reveals.
-          symlinkSync('.', join(workspace, 'self'))
-          symlinkSync('.git', join(workspace, 'g'))
-          // Out of the checkout through src/up, except on Windows, which leads it to the decoy
-          // src/outside.
-          mkdirSync(join(workspace, 'src/outside'))
-          symlinkSync('..', join(workspace, 'src/up'))
-          symlinkSync('up/../outside', join(workspace, 'src/leak'))
-          file(join(workspace, 'README.md'))
-          const before = snapshot(root)
+  test.prop([links], { numRuns: 500 })(
+    'only adds links in node_modules to directories of the checkout outside .git',
+    (links) => {
+      mkdirSync(join(workspace, 'node_modules/.pnpm/pkg/node_modules/pkg'), {
+        recursive: true
+      })
+      mkdirSync(join(workspace, 'packages/a'), { recursive: true })
+      mkdirSync(join(workspace, 'src'))
+      mkdirSync(join(workspace, '.git/hooks'), { recursive: true })
+      symlinkSync(outside, join(workspace, 'out'))
+      symlinkSync('packages', join(workspace, 'lnk'))
+      // Committed links to the checkout itself and into .git, which only resolving reveals.
+      symlinkSync('.', join(workspace, 'self'))
+      symlinkSync('.git', join(workspace, 'g'))
+      // Out of the checkout through src/up, except on Windows, which leads it to the decoy
+      // src/outside.
+      mkdirSync(join(workspace, 'src/outside'))
+      symlinkSync('..', join(workspace, 'src/up'))
+      symlinkSync('up/../outside', join(workspace, 'src/leak'))
+      file(join(workspace, 'README.md'))
+      const before = snapshot(root)
 
-          recreateLinks(workspace, links)
+      recreateLinks(workspace, links)
 
-          // Directories of the checkout outside .git, those the call made on the way included.
-          const allowed = identitiesUnder(workspace, (path) =>
-            isGit(basename(path))
-          )
-          const checkout = landsOn(workspace)
-          for (const path of addedToCheckout(before, snapshot(root))) {
-            const stats = lstatSync(join(workspace, path))
-            expect(stats.isFile()).toBe(false)
-            const segments = path.split(sep)
-            expect(segments.some(isGit)).toBe(false)
-            expect(
-              segments.some(
-                (s) => s.toLowerCase() === 'sonar-project.properties'
-              )
-            ).toBe(false)
-            if (!stats.isSymbolicLink()) continue
-            expect(segments.slice(0, -1)).toContain('node_modules')
-            expect(statSync(join(workspace, path)).isDirectory()).toBe(true)
-            const lands = landsOn(join(workspace, path))
-            expect(lands).not.toBe(checkout)
-            expect(lands !== undefined && allowed.has(lands)).toBe(true)
-          }
-        } finally {
-          rmSync(root, { recursive: true, force: true })
-        }
-      }),
-      { numRuns: 500 }
-    )
-  })
+      // Directories of the checkout outside .git, those the call made on the way included.
+      const allowed = identitiesUnder(workspace, (path) =>
+        isGit(basename(path))
+      )
+      const checkout = landsOn(workspace)
+      for (const path of addedToCheckout(before, snapshot(root))) {
+        const stats = lstatSync(join(workspace, path))
+        expect(stats.isFile()).toBe(false)
+        const segments = path.split(sep)
+        expect(segments.some(isGit)).toBe(false)
+        expect(
+          segments.some((s) => s.toLowerCase() === 'sonar-project.properties')
+        ).toBe(false)
+        if (!stats.isSymbolicLink()) continue
+        expect(segments.slice(0, -1)).toContain('node_modules')
+        expect(statSync(join(workspace, path)).isDirectory()).toBe(true)
+        const lands = landsOn(join(workspace, path))
+        expect(lands).not.toBe(checkout)
+        expect(lands !== undefined && allowed.has(lands)).toBe(true)
+      }
+    }
+  )
 })
 
 describe('removeOutwardLinks on any checkout', () => {
+  withFreshDirectories()
+
   // Links anywhere in the checkout, to anywhere: up and back again, through each other, round in
   // circles, into /proc, out of the checkout and to decoys named outside within it.
   const location = fc.constantFrom('l', 'up', 'a/l', 'a/up', 'a/b/l', 'a/b/up')
@@ -471,61 +482,54 @@ describe('removeOutwardLinks on any checkout', () => {
     selector: (link) => link.location
   })
 
-  it('leaves only links that lead into the checkout, and everything else', () => {
-    fc.assert(
-      fc.property(links, (links) => {
-        freshDirectories()
-        try {
-          for (const decoy of ['outside', 'a/outside', 'a/b/outside'])
-            mkdirSync(join(workspace, decoy), { recursive: true })
-          file(join(workspace, 'a/b/outside/secret'))
-          // Of a directory: Windows would otherwise look at the target, which a loop makes fail.
-          for (const link of links)
-            symlinkSync(
-              link.target.replace('{outside}', outside),
-              join(workspace, link.location),
-              'dir'
-            )
-          const before = snapshot(workspace)
+  test.prop([links], { numRuns: 500 })(
+    'leaves only links that lead into the checkout, and everything else',
+    (links) => {
+      for (const decoy of ['outside', 'a/outside', 'a/b/outside'])
+        mkdirSync(join(workspace, decoy), { recursive: true })
+      file(join(workspace, 'a/b/outside/secret'))
+      // Of a directory: Windows would otherwise look at the target, which a loop makes fail.
+      for (const link of links)
+        symlinkSync(
+          link.target.replace('{outside}', outside),
+          join(workspace, link.location),
+          'dir'
+        )
+      const before = snapshot(workspace)
 
-          removeOutwardLinks(workspace)
+      removeOutwardLinks(workspace)
 
-          const after = snapshot(workspace)
-          const inCheckout = identitiesUnder(workspace)
-          const isLink = ([, was]: [string, string]): boolean =>
-            was.startsWith('link ')
-          const kept = [...before]
-            .filter(isLink)
-            .map(([path]) => path)
-            .filter((path) => after.has(path))
-          // Each link left leads into the checkout, where the system reaches it.
-          expect(
-            kept.map((path) => {
-              const lands = landsOn(join(workspace, path))
-              const reached = outcome(() => statSync(join(workspace, path)))
-              return {
-                path,
-                inCheckout:
-                  lands !== undefined &&
-                  inCheckout.has(lands) &&
-                  reached.value !== undefined
-              }
-            })
-          ).toEqual(kept.map((path) => ({ path, inCheckout: true })))
-          const others = [...before].filter((entry) => !isLink(entry))
-          expect(others.map(([path]) => [path, after.get(path)])).toEqual(
-            others
-          )
-        } finally {
-          rmSync(root, { recursive: true, force: true })
-        }
-      }),
-      { numRuns: 500 }
-    )
-  })
+      const after = snapshot(workspace)
+      const inCheckout = identitiesUnder(workspace)
+      const isLink = ([, was]: [string, string]): boolean =>
+        was.startsWith('link ')
+      const kept = [...before]
+        .filter(isLink)
+        .map(([path]) => path)
+        .filter((path) => after.has(path))
+      // Each link left leads into the checkout, where the system reaches it.
+      expect(
+        kept.map((path) => {
+          const lands = landsOn(join(workspace, path))
+          const reached = outcome(() => statSync(join(workspace, path)))
+          return {
+            path,
+            inCheckout:
+              lands !== undefined &&
+              inCheckout.has(lands) &&
+              reached.value !== undefined
+          }
+        })
+      ).toEqual(kept.map((path) => ({ path, inCheckout: true })))
+      const others = [...before].filter((entry) => !isLink(entry))
+      expect(others.map(([path]) => [path, after.get(path)])).toEqual(others)
+    }
+  )
 })
 
 describe('unpackWorkspace on any artifact', () => {
+  withFreshDirectories()
+
   const artifactFile = fc.record({
     path: fc.array(segment, { maxLength: 4 }),
     name: fc.constantFrom(
@@ -543,73 +547,61 @@ describe('unpackWorkspace on any artifact', () => {
     content: fc.constantFrom('artifact', '')
   })
 
-  it('writes only new files, outside .git, and into the sources only reports and type information', () => {
-    fc.assert(
-      fc.property(fc.array(artifactFile, { maxLength: 8 }), (files) => {
-        freshDirectories()
+  test.prop([fc.array(artifactFile, { maxLength: 8 })], { numRuns: 300 })(
+    'writes only new files, outside .git, and into the sources only reports and type information',
+    (files) => {
+      const artifact = join(root, 'artifact')
+      mkdirSync(artifact)
+      for (const { path, name, content } of files) {
+        // Only what a file system can hold: no '..' or '.' names, no file where a directory is.
+        const segments = path.filter((s) => !['', '.', '..'].includes(s))
         try {
-          const artifact = join(root, 'artifact')
-          mkdirSync(artifact)
-          for (const { path, name, content } of files) {
-            // Only what a file system can hold: no '..' or '.' names, no file where a directory is.
-            const segments = path.filter((s) => !['', '.', '..'].includes(s))
-            try {
-              file(join(artifact, ...segments, name), content)
-            } catch {
-              continue
-            }
-          }
-          file(join(workspace, 'src/Main.java'), 'main')
-          mkdirSync(join(workspace, 'src/node_modules'))
-          file(join(workspace, '.git/config'), 'git')
-          file(join(workspace, 'target/old.txt'), 'old')
-          file(join(workspace, 'README.md'), 'readme')
-          symlinkSync(outside, join(workspace, 'out'))
-          symlinkSync('src', join(workspace, 'lnk'))
-          // A check that follows links would see nothing here, and write through it.
-          symlinkSync(join(outside, 'new'), join(workspace, 'dangling'))
-          const realSources = realpathSync.native(join(workspace, 'src'))
-          const report = join(realSources, 'report.xml')
-          const before = snapshot(root)
-
-          unpackWorkspace(
-            artifact,
-            workspace,
-            [join(workspace, 'src')],
-            [report]
-          )
-
-          for (const path of addedToCheckout(before, snapshot(root))) {
-            const segments = path.split(sep)
-            expect(segments.some(isGit)).toBe(false)
-            // The scanner reads settings from a file by that name in any case; a directory only
-            // matters by its exact name, which is the one Linux has.
-            const real = join(realpathSync.native(workspace), path)
-            const isDirectory = lstatSync(real).isDirectory()
-            const name = segments.at(-1) ?? ''
-            expect(isDirectory ? name : name.toLowerCase()).not.toBe(
-              'sonar-project.properties'
-            )
-            if (!within(real, realSources) || real === realSources) continue
-            if (isDirectory) continue
-            const typeInformation =
-              segments.includes('node_modules') &&
-              /^(?:package\.json|.*\.d\.[cm]?ts|tsconfig.*\.json)$/.test(
-                segments.at(-1) ?? ''
-              )
-            expect({
-              path,
-              allowed: real === report || typeInformation
-            }).toEqual({
-              path,
-              allowed: true
-            })
-          }
-        } finally {
-          rmSync(root, { recursive: true, force: true })
+          file(join(artifact, ...segments, name), content)
+        } catch {
+          continue
         }
-      }),
-      { numRuns: 300 }
-    )
-  })
+      }
+      file(join(workspace, 'src/Main.java'), 'main')
+      mkdirSync(join(workspace, 'src/node_modules'))
+      file(join(workspace, '.git/config'), 'git')
+      file(join(workspace, 'target/old.txt'), 'old')
+      file(join(workspace, 'README.md'), 'readme')
+      symlinkSync(outside, join(workspace, 'out'))
+      symlinkSync('src', join(workspace, 'lnk'))
+      // A check that follows links would see nothing here, and write through it.
+      symlinkSync(join(outside, 'new'), join(workspace, 'dangling'))
+      const realSources = realpathSync.native(join(workspace, 'src'))
+      const report = join(realSources, 'report.xml')
+      const before = snapshot(root)
+
+      unpackWorkspace(artifact, workspace, [join(workspace, 'src')], [report])
+
+      for (const path of addedToCheckout(before, snapshot(root))) {
+        const segments = path.split(sep)
+        expect(segments.some(isGit)).toBe(false)
+        // The scanner reads settings from a file by that name in any case; a directory only
+        // matters by its exact name, which is the one Linux has.
+        const real = join(realpathSync.native(workspace), path)
+        const isDirectory = lstatSync(real).isDirectory()
+        const name = segments.at(-1) ?? ''
+        expect(isDirectory ? name : name.toLowerCase()).not.toBe(
+          'sonar-project.properties'
+        )
+        if (!within(real, realSources) || real === realSources) continue
+        if (isDirectory) continue
+        const typeInformation =
+          segments.includes('node_modules') &&
+          /^(?:package\.json|.*\.d\.[cm]?ts|tsconfig.*\.json)$/.test(
+            segments.at(-1) ?? ''
+          )
+        expect({
+          path,
+          allowed: real === report || typeInformation
+        }).toEqual({
+          path,
+          allowed: true
+        })
+      }
+    }
+  )
 })

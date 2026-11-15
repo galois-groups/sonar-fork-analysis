@@ -1,3 +1,4 @@
+import { test } from '@fast-check/vitest'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -44,21 +45,19 @@ describe('escaped', () => {
 
   // Only plain characters, references and <wbr> come out, so nothing in the text can be Markdown or
   // HTML syntax; and decoding the references gives the text back, without its bidirectional controls.
-  it('lets no syntax through, whatever the text', () => {
-    fc.assert(
-      fc.property(fc.string({ unit: 'binary' }), (text) => {
-        const out = escaped(text)
-        expect(out).toMatch(/^(?:[A-Za-z0-9 ]|&#\d+;(?:<wbr>)?)*$/)
-        const decoded = out
-          .replaceAll('<wbr>', '')
-          .replace(/&#(\d+);/g, (_, point: string) =>
-            String.fromCodePoint(Number(point))
-          )
-        expect(decoded).toBe(text.replace(/\p{Bidi_Control}/gu, '\uFFFD'))
-      }),
-      { numRuns: 1000 }
-    )
-  })
+  test.prop([fc.string({ unit: 'binary' })], { numRuns: 1000 })(
+    'lets no syntax through, whatever the text',
+    (text) => {
+      const out = escaped(text)
+      expect(out).toMatch(/^(?:[A-Za-z0-9 ]|&#\d+;(?:<wbr>)?)*$/)
+      const decoded = out
+        .replaceAll('<wbr>', '')
+        .replace(/&#(\d+);/g, (_, point: string) =>
+          String.fromCodePoint(Number(point))
+        )
+      expect(decoded).toBe(text.replace(/\p{Bidi_Control}/gu, '\uFFFD'))
+    }
+  )
 })
 
 describe('readReport', () => {
@@ -391,17 +390,12 @@ describe('analyzeSummary', () => {
       )
     })
 
-    it('keeps any list under the limit', () => {
-      fc.assert(
-        fc.property(
-          fc.array(fc.string({ unit: 'binary', maxLength: 2000 }), {
-            maxLength: 100
-          }),
-          (names) => {
-            expect(row(files(...names)).length).toBeLessThanOrEqual(10_100)
-          }
-        )
-      )
+    test.prop([
+      fc.array(fc.string({ unit: 'binary', maxLength: 2000 }), {
+        maxLength: 100
+      })
+    ])('keeps any list under the limit', (names) => {
+      expect(row(files(...names)).length).toBeLessThanOrEqual(10_100)
     })
   })
 

@@ -1,3 +1,4 @@
+import { test } from '@fast-check/vitest'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'node:child_process'
 import {
@@ -41,7 +42,16 @@ function git(cwd: string, ...args: string[]): string {
   ).trim()
 }
 
-beforeEach(() => {
+// A served repository and an empty workspace for each test of the calling describe.
+function withServedRepository(): void {
+  beforeEach(servedRepository)
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true })
+    delete process.env.GITHUB_WORKSPACE
+  })
+}
+
+function servedRepository(): void {
   vi.resetAllMocks()
   root = mkdtempSync(join(tmpdir(), 'checkout-'))
   // Serves owner/repo from disk, standing in for https://github.com/owner/repo.
@@ -71,12 +81,7 @@ beforeEach(() => {
   )
   workspace = join(root, 'workspace')
   mkdirSync(workspace)
-})
-
-afterEach(() => {
-  rmSync(root, { recursive: true, force: true })
-  delete process.env.GITHUB_WORKSPACE
-})
+}
 
 // Built the way the action builds it: the server's URL, then the repository.
 function origin(): string {
@@ -84,6 +89,8 @@ function origin(): string {
 }
 
 describe('checkoutCommit', () => {
+  withServedRepository()
+
   const checkout = { repository: 'owner/repo', token: 'a-token' }
 
   it('checks out the exact commit with its history and no stored credentials', async () => {
@@ -139,6 +146,8 @@ describe('checkoutCommit', () => {
 })
 
 describe('prepareCheckout', () => {
+  withServedRepository()
+
   const checkout = { repository: 'owner/repo', token: 'a-token' }
 
   it('checks out an empty workspace itself, and notes it for the clean-up', async () => {
@@ -196,6 +205,8 @@ describe('prepareCheckout', () => {
 })
 
 describe('cleanUpCheckout', () => {
+  withServedRepository()
+
   beforeEach(() => {
     process.env.GITHUB_WORKSPACE = workspace
     git(root, 'clone', '--quiet', origin(), workspace)
@@ -244,6 +255,8 @@ describe('cleanUpCheckout', () => {
 })
 
 describe('verifyCheckout', () => {
+  withServedRepository()
+
   function clone(...args: string[]): void {
     git(root, 'clone', '--quiet', ...args, origin(), workspace)
   }
@@ -450,41 +463,32 @@ describe('sameRepository', () => {
   const expected = ({ host, owner, name }: Repository) =>
     `https://${host}/${owner}/${name}`
 
-  it('takes every form of the repository for it', () => {
-    fc.assert(
-      fc.property(
-        repository.chain((repo) => written(repo).map((url) => ({ repo, url }))),
-        ({ repo, url }) => {
-          expect(sameRepository(url, expected(repo))).toBe(true)
-        }
-      ),
-      { numRuns: 1000 }
-    )
+  test.prop(
+    [repository.chain((repo) => written(repo).map((url) => ({ repo, url })))],
+    { numRuns: 1000 }
+  )('takes every form of the repository for it', ({ repo, url }) => {
+    expect(sameRepository(url, expected(repo))).toBe(true)
   })
 
-  it('never takes another repository for it, in any form', () => {
-    // Another repository differs in one part only: random pairs differ in all three, and would pass
-    // even with a comparison that ignored one of them.
-    const neighbour = fc
-      .tuple(
-        repository,
-        repository,
-        fc.constantFrom('host', 'owner', 'name') as fc.Arbitrary<
-          keyof Repository
-        >
-      )
-      .filter(([a, b, part]) => a[part].toLowerCase() !== b[part].toLowerCase())
-      .map(([a, b, part]) => ({ a, other: { ...a, [part]: b[part] } }))
-    fc.assert(
-      fc.property(
-        neighbour.chain(({ a, other }) =>
-          written(other).map((url) => ({ a, url }))
-        ),
-        ({ a, url }) => {
-          expect(sameRepository(url, expected(a))).toBe(false)
-        }
-      ),
-      { numRuns: 1000 }
+  // Another repository differs in one part only: random pairs differ in all three, and would pass
+  // even with a comparison that ignored one of them.
+  const neighbour = fc
+    .tuple(
+      repository,
+      repository,
+      fc.constantFrom('host', 'owner', 'name') as fc.Arbitrary<keyof Repository>
     )
+    .filter(([a, b, part]) => a[part].toLowerCase() !== b[part].toLowerCase())
+    .map(([a, b, part]) => ({ a, other: { ...a, [part]: b[part] } }))
+
+  test.prop(
+    [
+      neighbour.chain(({ a, other }) =>
+        written(other).map((url) => ({ a, url }))
+      )
+    ],
+    { numRuns: 1000 }
+  )('never takes another repository for it, in any form', ({ a, url }) => {
+    expect(sameRepository(url, expected(a))).toBe(false)
   })
 })

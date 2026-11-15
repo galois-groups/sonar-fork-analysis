@@ -1,3 +1,4 @@
+import { test } from '@fast-check/vitest'
 import { describe, it, expect } from 'vitest'
 import {
   byCodeUnit,
@@ -34,13 +35,12 @@ const settings = new Map([
 ])
 
 describe('byCodeUnit', () => {
-  it('sorts as .sort() does without a compare function', () => {
-    fc.assert(
-      fc.property(fc.array(fc.string({ unit: 'binary' })), (strings) => {
-        expect(strings.toSorted(byCodeUnit)).toEqual(strings.toSorted())
-      })
-    )
-  })
+  test.prop([fc.array(fc.string({ unit: 'binary' }))])(
+    'sorts as .sort() does without a compare function',
+    (strings) => {
+      expect(strings.toSorted(byCodeUnit)).toEqual(strings.toSorted())
+    }
+  )
 })
 
 describe('moduleTree', () => {
@@ -133,32 +133,30 @@ describe('moduleTree and the scanner', () => {
 })
 
 describe('moduleTree on any artifact', () => {
-  it('lets no module take a setting the analysis sets on the project', () => {
-    fc.assert(
-      fc.property(moduleSettings, (settings) => {
-        let tree
-        try {
-          tree = moduleTree(settings)
-        } catch (error) {
-          // Refusing the artifact is the other safe outcome.
-          if ((error as Error).message.startsWith('Invalid module id')) return
-          throw error
-        }
-        for (const prefix of tree.prefixes) {
-          // Stricter than the engine, where only the project's own modules take its keys.
-          for (const key of trustedKeys)
-            expect(prefix !== '' && key.startsWith(prefix)).toBe(false)
-          // The engine splits lists as CSV and trims ids its own way (see arbitraries.ts): with no
-          // quotes, it must read the same ids.
-          const list = settings.get(tree.keyOf(prefix, 'sonar.modules') ?? '')
-          expect(list ?? '').not.toContain('"')
-          for (const module of (list ?? '').split(','))
-            expect(module.trim()).toBe(engineEntry(module) ?? '')
-        }
-      }),
-      { numRuns: 1000 }
-    )
-  })
+  test.prop([moduleSettings], { numRuns: 1000 })(
+    'lets no module take a setting the analysis sets on the project',
+    (settings) => {
+      let tree
+      try {
+        tree = moduleTree(settings)
+      } catch (error) {
+        // Refusing the artifact is the other safe outcome.
+        if ((error as Error).message.startsWith('Invalid module id')) return
+        throw error
+      }
+      for (const prefix of tree.prefixes) {
+        // Stricter than the engine, where only the project's own modules take its keys.
+        for (const key of trustedKeys)
+          expect(prefix !== '' && key.startsWith(prefix)).toBe(false)
+        // The engine splits lists as CSV and trims ids its own way (see arbitraries.ts): with no
+        // quotes, it must read the same ids.
+        const list = settings.get(tree.keyOf(prefix, 'sonar.modules') ?? '')
+        expect(list ?? '').not.toContain('"')
+        for (const module of (list ?? '').split(','))
+          expect(module.trim()).toBe(engineEntry(module) ?? '')
+      }
+    }
+  )
 })
 
 describe('moduleTree.split', () => {

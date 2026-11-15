@@ -13,6 +13,7 @@ import { join } from 'node:path'
 import fc from 'fast-check'
 import { formatProperties } from '../src/analyze.js'
 import { OFFLINE_PROXY, scannerServer } from '../src/languages.js'
+import { simulationProperties } from '../src/prepare.js'
 import { installScanner } from '../src/scanner.js'
 import { settingsWithoutPlaceholders } from './arbitraries.js'
 import { Probe, cliJar, work } from './scanner-probe.js'
@@ -145,6 +146,32 @@ describe('the scanner CLI in simulation mode', () => {
     await expect(server(['-Dsonar.region=xx'])).rejects.toThrow(
       'when asked which server it uses'
     )
+  })
+
+  // A build may set the region, which the scanner refuses next to an explicit host.
+  it("writes prepare's dump when the build sets a region", async () => {
+    for (const [args, extra] of [
+      [['-Dsonar.region=us'], {}],
+      [[], { SONAR_REGION: 'us' }]
+    ] as const) {
+      const dump = join(dir, 'prepare.properties')
+      const exitCode = await exec(
+        scanner,
+        [
+          `-Dproject.settings=${settings}`,
+          ...simulationProperties(dump),
+          ...args
+        ],
+        { cwd: dir, env: env(join(dir, 'home'), extra), ignoreReturnCode: true }
+      )
+
+      expect({ args, extra, exitCode, written: existsSync(dump) }).toEqual({
+        args,
+        extra,
+        exitCode: 0,
+        written: true
+      })
+    }
   })
 
   // What a CLI that ignored simulation mode would do with the lookup's other arguments.

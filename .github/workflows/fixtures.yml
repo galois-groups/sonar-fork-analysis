@@ -94,6 +94,8 @@ jobs:
         with:
           fixture: ${{ matrix.fixture }}
 
+      # A region in the build must not stop prepare, which contacts no server. Prepare warns that the
+      # analysis leaves it out.
       - name: 'Prepare the analysis'
         uses: $/
         with:
@@ -101,6 +103,7 @@ jobs:
           project-key:
             galois-groups_sonar-fork-analysis_${{ matrix.fixture }}_split
           working-directory: fixtures/${{ matrix.fixture }}
+          build-arguments: -Dsonar.region=us
 
   # Analyses the prepared artifact in the same run, so changes to analyze mode are tested before they
   # reach main (Fixtures Sonar only ever runs main's copy of itself).
@@ -166,6 +169,7 @@ jobs:
           }
           Add-Content -Path $env:GITHUB_PATH -Value $traps
 
+      # As in the prepare job.
       - name: 'Prepare the analysis'
         uses: $/
         with:
@@ -174,6 +178,7 @@ jobs:
             galois-groups_sonar-fork-analysis_${{ matrix.fixture }}_${{
             runner.os }}
           working-directory: fixtures/${{ matrix.fixture }}
+          build-arguments: -Dsonar.region=us
 
   # Fails when the fork path loses anything a direct analysis finds. On pull requests Sonar only keeps
   # issues on changed lines, so the full comparison happens on main.

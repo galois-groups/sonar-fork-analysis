@@ -47,9 +47,10 @@ afterEach(() => {
 })
 
 describe('simulationProperties', () => {
-  it('passes both dump property names and an unreachable host', () => {
+  it('passes both dump property names and a proxy that refuses connections', () => {
     expect(simulationProperties('/tmp/dump')).toEqual([
-      '-Dsonar.host.url=http://127.0.0.1:9',
+      '-Dsonar.scanner.proxyHost=127.0.0.1',
+      '-Dsonar.scanner.proxyPort=9',
       '-Dsonar.scanner.dumpToFile=/tmp/dump',
       '-Dsonar.scanner.internal.dumpToFile=/tmp/dump'
     ])

@@ -78178,7 +78178,6 @@ function filterSettings(settings) {
 	}
 	return filtered;
 }
-var OFFLINE_HOST = "http://127.0.0.1:9";
 var IMPLICIT_REPORTS = [
 	"target/site/jacoco/jacoco.xml",
 	"target/site/jacoco-it/jacoco.xml",
@@ -78186,7 +78185,7 @@ var IMPLICIT_REPORTS = [
 ];
 function simulationProperties(dumpFile) {
 	return [
-		`-Dsonar.host.url=${OFFLINE_HOST}`,
+		...OFFLINE_PROXY,
 		`-Dsonar.scanner.dumpToFile=${dumpFile}`,
 		`-Dsonar.scanner.internal.dumpToFile=${dumpFile}`
 	];

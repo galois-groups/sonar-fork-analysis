@@ -72,8 +72,10 @@ export function definitions(buildArguments: string[]): [string, string][] {
   return defined
 }
 
-// A CLI that ignored simulation mode would analyse with every language on. Through a proxy that refuses
-// connections, it fails at its first request instead. The proxy doesn't change the server it names.
+// A scanner that ignored simulation mode would analyse, with every language on. Through a proxy that
+// refuses connections, it fails at its first request instead. The proxy doesn't change the server it
+// names. Older bootstrappers, like those of CLI 5 and the Maven plugin 4, ignore it and download the
+// engine, which then fails the same way.
 export const OFFLINE_PROXY = [
   '-Dsonar.scanner.proxyHost=127.0.0.1',
   '-Dsonar.scanner.proxyPort=9'

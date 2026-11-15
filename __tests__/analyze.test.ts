@@ -1,4 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { test } from '@fast-check/vitest'
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  afterEach
+} from 'vitest'
 import {
   existsSync,
   lstatSync,
@@ -55,7 +64,7 @@ function file(path: string, content = 'x'): string {
   return path
 }
 
-beforeEach(() => {
+function freshDirectories(): void {
   // The real path, as analyze compares them: macOS's temporary directory is behind a link.
   root = realpathSync.native(mkdtempSync(join(tmpdir(), 'analyze-')))
   workspace = join(root, 'work')
@@ -64,13 +73,27 @@ beforeEach(() => {
   outside = join(root, 'outside')
   for (const directory of [workspace, home, artifact, outside])
     mkdirSync(directory)
-})
+}
 
-afterEach(() => {
+const removeDirectories = (): void => {
   rmSync(root, { recursive: true, force: true })
-})
+}
+
+// Fresh directories for each test of the calling describe, and for each run of a property. With
+// once, one set for all of them, for a property that only reads.
+function withFreshDirectories(once = false): void {
+  if (once) {
+    beforeAll(freshDirectories)
+    afterAll(removeDirectories)
+  } else {
+    beforeEach(freshDirectories)
+    afterEach(removeDirectories)
+  }
+}
 
 describe('resolveSettings', () => {
+  withFreshDirectories()
+
   it('maps placeholders onto the workspace and the private home', () => {
     file(join(workspace, 'app/src/main/java/App.java'))
     const resolved = resolveSettings(
@@ -424,6 +447,8 @@ describe('resolveSettings', () => {
 })
 
 describe('unpackWorkspace', () => {
+  withFreshDirectories()
+
   it('adds build output next to the checkout', () => {
     file(join(artifact, 'app/target/classes/App.class'), 'bytes')
     expect(unpackWorkspace(artifact, workspace, [])).toEqual([])
@@ -559,6 +584,8 @@ describe('unpackWorkspace', () => {
 })
 
 describe('readManifest', () => {
+  withFreshDirectories()
+
   const read = (manifest: unknown) =>
     readManifest(JSON.stringify(manifest), 'the artifact')
 
@@ -593,6 +620,8 @@ describe('readManifest', () => {
 })
 
 describe('checkNoLinks', () => {
+  withFreshDirectories()
+
   it('rejects an artifact containing a symlink', () => {
     symlinkSync('/etc/passwd', join(artifact, 'passwd'))
     expect(() => {
@@ -628,6 +657,8 @@ describe('checkNoLinks', () => {
 })
 
 describe('removeProjectSettings', () => {
+  withFreshDirectories()
+
   it('removes settings files anywhere in the checkout', () => {
     const rootSettings = file(join(workspace, 'sonar-project.properties'))
     const moduleSettings = file(join(workspace, 'app/sonar-project.properties'))
@@ -668,6 +699,8 @@ describe('removeProjectSettings', () => {
 })
 
 describe('removeOutwardLinks', () => {
+  withFreshDirectories()
+
   it.skipIf(windows)(
     'removes a link that climbs out of the checkout through another link',
     () => {
@@ -720,6 +753,8 @@ describe('removeOutwardLinks', () => {
 })
 
 describe('resolveSettings and the scanner', () => {
+  withFreshDirectories()
+
   it.skipIf(windows)('refuses paths the scanner would read as others', () => {
     mkdirSync(join(workspace, 'x '))
     symlinkSync(outside, join(workspace, 'x'))
@@ -772,6 +807,8 @@ describe('resolveSettings and the scanner', () => {
 })
 
 describe('resolveSettings on any artifact', () => {
+  withFreshDirectories(true)
+
   const segment = fc.constantFrom(
     '..',
     '.',
@@ -855,7 +892,11 @@ describe('resolveSettings on any artifact', () => {
     ])
   }
 
-  it('never lets a path out of the workspace or the private home', () => {
+  let inCheckout: Set<string>
+  const within = (path: string, root: string): boolean =>
+    path === root || path.startsWith(root + sep)
+
+  beforeAll(() => {
     // Links the checkout could hold, to a file the analysis must never read.
     file(join(outside, 'secret'))
     symlinkSync(outside, join(workspace, 'out'))
@@ -874,43 +915,41 @@ describe('resolveSettings on any artifact', () => {
     }
     // The analysis creates the private home only after resolving, when it unpacks the artifact.
     rmSync(home, { recursive: true })
-    const inCheckout = identitiesUnder(workspace)
-    const within = (path: string, root: string): boolean =>
-      path === root || path.startsWith(root + sep)
+    inCheckout = identitiesUnder(workspace)
+  })
 
-    fc.assert(
-      fc.property(artifact, (settings) => {
-        let resolved
-        try {
-          resolved = resolveSettings(settings, workspace, home)
-        } catch (error) {
-          // Refusing the artifact is the other safe outcome.
-          if ((error as Error).message.includes('no base directory')) return
-          throw error
-        }
-        for (const [key, value] of resolved.properties) {
-          const kind = kinds[key.replace(/^m\./, '')]
-          if (!kind) continue
-          const paths = kind.list ? value.split(',') : [value]
-          for (const path of paths.filter((path) => path !== '')) {
-            expect(path).toBe(resolve(path))
-            expect(/[*?]/.test(path)).toBe(false)
-            expect(kind.list && path.includes('"')).toBe(false)
-            for (const read of readings(path)) {
-              // The analysis makes the private home, fresh, only after resolving.
-              if (kind.home && within(read, home)) continue
-              const lands = landsOn(read)
-              expect({
-                read,
-                inCheckout: lands && inCheckout.has(lands)
-              }).toEqual({ read, inCheckout: true })
-            }
+  test.prop([artifact], { numRuns: 1000 })(
+    'never lets a path out of the workspace or the private home',
+    (settings) => {
+      let resolved
+      try {
+        resolved = resolveSettings(settings, workspace, home)
+      } catch (error) {
+        // Refusing the artifact is the other safe outcome.
+        if ((error as Error).message.includes('no base directory')) return
+        throw error
+      }
+      for (const [key, value] of resolved.properties) {
+        const kind = kinds[key.replace(/^m\./, '')]
+        if (!kind) continue
+        const paths = kind.list ? value.split(',') : [value]
+        for (const path of paths.filter((path) => path !== '')) {
+          expect(path).toBe(resolve(path))
+          expect(/[*?]/.test(path)).toBe(false)
+          expect(kind.list && path.includes('"')).toBe(false)
+          for (const read of readings(path)) {
+            // The analysis makes the private home, fresh, only after resolving.
+            if (kind.home && within(read, home)) continue
+            const lands = landsOn(read)
+            expect({
+              read,
+              inCheckout: lands && inCheckout.has(lands)
+            }).toEqual({ read, inCheckout: true })
           }
         }
-      }),
-      { numRuns: 1000 }
-    )
-  })
+      }
+    }
+  )
 })
 
 describe('formatProperties', () => {
@@ -926,31 +965,25 @@ describe('formatProperties', () => {
     expect(parseProperties(formatted)).toEqual(properties)
   })
 
-  it('gives back exactly the settings it wrote, one per line', () => {
-    fc.assert(
-      fc.property(settingsWithoutPlaceholders, (entries) => {
-        const formatted = formatProperties(new Map(entries))
-        expect(formatted).toMatch(/^[\x20-\x7e\n]*$/)
-        expect(
-          formatted.split('\n').filter((line) => line !== '')
-        ).toHaveLength(entries.length)
-        expect(parseProperties(formatted)).toEqual(new Map(entries))
-      }),
-      { numRuns: 1000 }
-    )
-  })
+  test.prop([settingsWithoutPlaceholders], { numRuns: 1000 })(
+    'gives back exactly the settings it wrote, one per line',
+    (entries) => {
+      const formatted = formatProperties(new Map(entries))
+      expect(formatted).toMatch(/^[\x20-\x7e\n]*$/)
+      expect(formatted.split('\n').filter((line) => line !== '')).toHaveLength(
+        entries.length
+      )
+      expect(parseProperties(formatted)).toEqual(new Map(entries))
+    }
+  )
 
-  it('refuses a placeholder wherever it is', () => {
-    const name = fc.stringMatching(/^[\w.]+$/)
-    fc.assert(
-      fc.property(settingText, name, settingText, (before, name, after) => {
-        const value = `${before}\${${name}}${after}`
-        expect(() =>
-          formatProperties(new Map([['sonar.projectName', value]]))
-        ).toThrow(/holds a placeholder/)
-      }),
-      { numRuns: 1000 }
-    )
+  test.prop([settingText, fc.stringMatching(/^[\w.]+$/), settingText], {
+    numRuns: 1000
+  })('refuses a placeholder wherever it is', (before, name, after) => {
+    const value = `${before}\${${name}}${after}`
+    expect(() =>
+      formatProperties(new Map([['sonar.projectName', value]]))
+    ).toThrow(/holds a placeholder/)
   })
 })
 
@@ -1040,6 +1073,8 @@ describe('trustedProperties', () => {
 })
 
 describe('recreateLinks', () => {
+  withFreshDirectories()
+
   const link = (path: string): string | undefined =>
     lstatSync(join(workspace, path), {
       throwIfNoEntry: false
@@ -1271,6 +1306,8 @@ function readdirOrEmpty(directory: string): string[] {
 
 // The job summary lists them by kind.
 describe('what the analysis leaves out', () => {
+  withFreshDirectories()
+
   it('names each item by its kind', () => {
     const resolved = resolveSettings(
       {

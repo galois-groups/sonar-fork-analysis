@@ -130,6 +130,8 @@ export default defineConfig(
   {
     files: ['__tests__/**', '__fixtures__/**'],
     extends: [vitest.configs.recommended],
+    // Its test is Vitest's, with .prop added.
+    settings: { vitest: { vitestImports: ['@fast-check/vitest'] } },
     // Tests read JSON and mock arguments loosely, and write mocks of async functions as async: a value
     // of the wrong shape fails the assertion anyway, with the stack to show where.
     rules: {
@@ -147,7 +149,8 @@ export default defineConfig(
             'linuxIt',
             'nonRootIt',
             'posixIt',
-            'posixIt.each'
+            'posixIt.each',
+            'test.prop'
           ]
         }
       ]

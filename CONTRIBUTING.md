@@ -56,13 +56,16 @@ artifact that the failed run uploads.
 
 Dependabot updates indirect dependencies only for security fixes. Otherwise they
 stay at the versions in `package-lock.json` until someone refreshes them. Before
-each release, or about once a month, run `npm update` with `--before` set to the
-date 7 days ago, such as `npm update --before=2026-10-25`. The date gives the
-same 7-day wait as Dependabot's cooldown. Run it in the root and in
-`fixtures/npm`. The pnpm fixture needs no refresh: its only indirect dependency
-comes with `@types/node`, which Dependabot updates. Then run `npm run all` and
-open a pull request of its own. The changes to `dist/licenses.md` show which
-bundled packages changed.
+each release, or about once a month, run `npm update --min-release-age=7` in the
+root and in `fixtures/npm`. It takes only versions at least 7 days old, the same
+wait as Dependabot's cooldown. npm stops with "No matching version found … with
+a date before" when `package.json` already requires a younger version, usually
+after a security update. Exempt that package with
+`--min-release-age-exclude=<package>`. Both options need a recent npm 11 or 12.
+The pnpm fixture needs no refresh: its only indirect dependency comes with
+`@types/node`, which Dependabot updates. Then run `npm run all` and open a pull
+request of its own. The changes to `dist/licenses.md` show which bundled
+packages changed.
 
 Third-party actions added to a workflow must also be added to the repository's
 allowed actions.

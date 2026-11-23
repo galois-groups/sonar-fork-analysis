@@ -109214,12 +109214,13 @@ function message(error) {
 	return error instanceof Error ? error.message : String(error);
 }
 // src/scanner.ts
-var DEFAULT_VERSION = "8.4.0.16527";
+var DEFAULT_VERSION = "8.5.0.16571";
 var TESTED_VERSIONS = [
 	"8.0.1.6346",
 	"8.1.0.6389",
 	"8.2.0.6438",
 	"8.3.1.16491",
+	"8.4.0.16527",
 	DEFAULT_VERSION
 ];
 var DOWNLOADS = "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli";

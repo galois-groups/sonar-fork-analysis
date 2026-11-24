@@ -1,0 +1,18 @@
+[project]
+name = "fixture-python"
+version = "1.0.0"
+requires-python = ">=3.13"
+
+# The action runs pysonar, which reads its settings here. It also works some out on its own: the tests
+# from pytest's testpaths and the coverage exclusions from .coveragerc. The fork path must carry those
+# too.
+[tool.sonar]
+sources = "src,notebooks"
+python.version = "3.13"
+python.coverage.reportPaths = "coverage.xml"
+python.xunit.reportPath = "test-results.xml"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "--cov --cov-report=xml --junitxml=test-results.xml"

@@ -35,6 +35,8 @@ jobs:
             name: Npm
           - fixture: pnpm
             name: Pnpm
+          - fixture: python
+            name: Python
           - fixture: infra
             name: Infra
     env:
@@ -79,7 +81,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        fixture: [maven, gradle, npm, pnpm, infra]
+        fixture: [maven, gradle, npm, pnpm, python, infra]
     steps:
       # The head, like analyze checks out, so the shipped build output matches the analysed sources.
       - name: 'Checkout project'
@@ -122,8 +124,8 @@ jobs:
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-  # What differs on other systems: the wrappers' Windows scripts (mvnw.cmd, gradlew.bat), and the
-  # scanner the action downloads for each. Prepare runs the same build as a direct analysis without the
+  # What differs on other systems: the wrappers' Windows scripts (mvnw.cmd, gradlew.bat), the scanner
+  # the action downloads for each, and the stand-in for Java that pysonar starts. Prepare runs the same build as a direct analysis without the
   # token. Nothing analyses its artifact.
   other-systems:
     name: 'Prepare ${{ matrix.fixture }} on ${{ matrix.name }}'
@@ -142,6 +144,12 @@ jobs:
             os: windows-latest
             name: Windows
           - fixture: npm
+            os: macos-latest
+            name: macOS
+          - fixture: python
+            os: windows-latest
+            name: Windows
+          - fixture: python
             os: macos-latest
             name: macOS
     steps:
@@ -189,7 +197,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        fixture: [maven, gradle, npm, pnpm, infra]
+        fixture: [maven, gradle, npm, pnpm, python, infra]
     env:
       HAS_SONAR_TOKEN: ${{ secrets.SONAR_TOKEN != '' }}
     steps:
@@ -216,9 +224,8 @@ jobs:
           # What SonarQube Cloud records for both paths: the pull request's head, or the pushed commit.
           COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
           # The fork path only analyses the languages the action is tested with.
-          DIRECT_ONLY:
-            ${{ matrix.fixture == 'infra' && 'python/decoy.py' || '' }}
-          LANGUAGES: java,kotlin,js,ts,css,web,xml,yaml,json,docker,terraform,azureresourcemanager,shell,powershell,groovy,r,gosu,dataweave,postgres,abap,cobol,jcl,pli,rpg,plsql,tsql,vb,flex
+          DIRECT_ONLY: ${{ matrix.fixture == 'infra' && 'php/decoy.php' || '' }}
+          LANGUAGES: java,kotlin,js,ts,py,ipynb,css,web,xml,yaml,json,docker,terraform,azureresourcemanager,shell,powershell,groovy,r,gosu,dataweave,postgres,abap,cobol,jcl,pli,rpg,plsql,tsql,vb,flex
 
   # The same prepared artifacts, analysed with each other tested CLI, with the same traps and checks of
   # the programs started. After the comparison, which reads what the default CLI's analysis found: these

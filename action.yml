@@ -13,12 +13,12 @@ inputs:
     description: 'Directory containing the project.'
     default: .
   build-tool:
-    description: 'auto, maven, gradle, npm or scanner.'
+    description: 'auto, maven, gradle, npm, python or scanner.'
     default: auto
   build-goals:
     description: >
       Maven goals or Gradle tasks to run before the analysis, one per line.
-      Defaults to verify for Maven and check for Gradle. Not with npm or
+      Defaults to verify for Maven and check for Gradle. Not with npm, python or
       scanner, where the action runs after your own build and test steps.
     default: ''
   build-arguments:

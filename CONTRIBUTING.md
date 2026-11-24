@@ -9,11 +9,12 @@ whose new code has less than 80% coverage.
 Three workflows besides CI check the action:
 
 - [![Fixtures](https://github.com/galois-groups/sonar-fork-analysis/actions/workflows/fixtures.yml/badge.svg)](https://github.com/galois-groups/sonar-fork-analysis/actions/workflows/fixtures.yml)
-  runs the action on sample Maven, Gradle, npm and pnpm projects. A fifth one,
-  `infra`, has no build and holds a sample of every other file type the action
-  analyses. Fixtures analyses each one directly and through the fork path and
-  compares the results. It also checks what differs on Windows and macOS: the
-  Maven and Gradle wrappers and the scanner the action downloads.
+  runs the action on sample Maven, Gradle, npm, pnpm and Python projects.
+  Another one, `infra`, has no build and holds a sample of every other file type
+  the action analyses. Fixtures analyses each one directly and through the fork
+  path and compares the results. It also checks what differs on Windows and
+  macOS: the Maven and Gradle wrappers, the scanner the action downloads and the
+  stand-in for Java that pysonar starts.
 - [![Scanner and engines](https://github.com/galois-groups/sonar-fork-analysis/actions/workflows/scanner.yml/badge.svg)](https://github.com/galois-groups/sonar-fork-analysis/actions/workflows/scanner.yml)
   checks what the action assumes against the real scanner and the engines
   SonarCloud and SonarQube serve. Sonar updates the engines on its own schedule,
@@ -63,8 +64,10 @@ a date before" when `package.json` already requires a younger version, usually
 after a security update. Exempt that package with
 `--min-release-age-exclude=<package>`. Both options need a recent npm 11 or 12.
 The pnpm fixture needs no refresh: its only indirect dependency comes with
-`@types/node`, which Dependabot updates. Then run `npm run all` and open a pull
-request of its own. The changes to `dist/licenses.md` show which bundled
+`@types/node`, which Dependabot updates. The Python fixture's `requirements.txt`
+pins every package with its hashes, so Dependabot updates all of them. To add
+one, rerun the command at the top of the file. Then run `npm run all` and open a
+pull request of its own. The changes to `dist/licenses.md` show which bundled
 packages changed.
 
 Third-party actions added to a workflow must also be added to the repository's

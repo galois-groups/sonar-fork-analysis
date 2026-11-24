@@ -14,8 +14,8 @@ and limitations.
 | `sonar-host-url`     | For SonarQube Server  |                    | The server URL. Leave it empty for SonarQube Cloud or to use the `SONAR_HOST_URL` environment variable. Direct analyses also fall back to the build's own `sonar.host.url`. The Sonar workflow doesn't. |
 | `mode`               | No                    | `auto`             | `auto` picks the mode, see [how it works](how-it-works.md#the-two-workflows). `direct`, `prepare` or `analyze` forces one.                                                                              |
 | `working-directory`  | No                    | `.`                | The directory holding the project.                                                                                                                                                                      |
-| `build-tool`         | No                    | `auto`             | `auto` picks one from the project's files, see [build tools](#build-tools). `maven`, `gradle`, `npm` or `scanner` forces one.                                                                           |
-| `build-goals`        | No                    | `verify` / `check` | Maven goals or Gradle tasks to run. Not with `npm` or `scanner`.                                                                                                                                        |
+| `build-tool`         | No                    | `auto`             | `auto` picks one from the project's files, see [build tools](#build-tools). `maven`, `gradle`, `npm`, `python` or `scanner` forces one.                                                                 |
+| `build-goals`        | No                    | `verify` / `check` | Maven goals or Gradle tasks to run. Not with `npm`, `python` or `scanner`.                                                                                                                              |
 | `build-arguments`    | No                    |                    | Extra build flags. In the Sonar workflow they're passed to the scanner instead, for example `-Dsonar.projectName=App`. The scanner doesn't run in the checkout there, so use absolute paths.            |
 | `github-token`       | No                    | `github.token`     | Used to download the build's artifact, look up the pull request, check it out and post the status.                                                                                                      |
 | `scanner-version`    | No                    | newest tested      | The version of Sonar's scanner CLI, such as `8.1.0.6389`. See [the scanner CLI](#the-scanner-cli).                                                                                                      |
@@ -36,7 +36,9 @@ build-arguments: |
 
 The action picks the build tool from the files in the working directory. Maven
 or Gradle come first, then the npm scanner for a `package.json`, then Sonar's
-scanner for a `sonar-project.properties`. [`build-tool`](#inputs) forces one.
+scanner for a `sonar-project.properties`, then pysonar for a `pyproject.toml`.
+So a Python project with a `sonar-project.properties` keeps the scanner CLI.
+[`build-tool`](#inputs) forces one.
 
 ### Maven and Gradle
 
@@ -65,11 +67,25 @@ workflow. It passes the links your package manager makes there too. Rules that
 need types then work on pull requests from forks as well, even across the
 packages of a monorepo.
 
+### Python
+
+The action runs pysonar, Sonar's scanner for Python. It reads the `[tool.sonar]`
+table of `pyproject.toml` and a `sonar-project.properties`. The action runs the
+project's own pysonar first: the one in a `.venv` folder in the working
+directory, then one on the `PATH`. So the version your dependencies pin is the
+one that runs. Poetry keeps its environment outside the project by default, so
+its pysonar only runs when it's on the `PATH`. Without one, the action runs the
+latest release with `pipx run pysonar`. The log names the pysonar it ran.
+
+The fork path needs pysonar 1.8.0 or later.
+[How it works](how-it-works.md#settings-from-the-build) explains why.
+
 ## The scanner CLI
 
 The Sonar workflow always analyses with Sonar's scanner CLI. So does the build
-with `build-tool: scanner`. Maven, Gradle and npm builds use Sonar's plugin or
-npm package instead, so `scanner-version` doesn't apply to them.
+with `build-tool: scanner`. Maven, Gradle, npm and Python builds use Sonar's
+plugin, npm package or pysonar instead, so `scanner-version` doesn't apply to
+them.
 
 The action runs the newest scanner CLI it's tested with, unless
 `scanner-version` names another one. The tested versions are in
@@ -130,11 +146,11 @@ after about 10,000 characters. The log has every item.
 Pull requests from forks only get the
 [tested languages](../README.md#languages-on-pull-requests-from-forks) analysed.
 To turn a language on, set its file patterns in `build-arguments` in the Sonar
-workflow. For Python:
+workflow. For Go:
 
 ```yaml
 build-arguments: |
-  -Dsonar.lang.patterns.py=**/*.py
+  -Dsonar.lang.patterns.go=**/*.go
 ```
 
 The setting names the language by its Sonar key. Keys aren't always the
@@ -365,8 +381,8 @@ Sonar workflow, pass them in `build-arguments`.
 | Linux ARM64 | Untested       | Untested       |
 | macOS Intel | Untested       | Untested       |
 
-¹ Only the build's preparation runs there: Maven, Gradle and npm on Windows, npm
-on macOS. Nothing analyses those artifacts.
+¹ Only the build's preparation runs there: Maven, Gradle, npm and Python on
+Windows, npm and Python on macOS. Nothing analyses those artifacts.
 
 Tested and untested mean the same as for
 [projects](../README.md#supported-projects).

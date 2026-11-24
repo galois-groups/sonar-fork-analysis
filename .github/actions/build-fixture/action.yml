@@ -4,7 +4,7 @@ description:
   the action.'
 inputs:
   fixture:
-    description: 'The fixture: maven, gradle, npm, pnpm or infra.'
+    description: 'The fixture: maven, gradle, npm, pnpm, python or infra.'
     required: true
 runs:
   using: composite
@@ -52,3 +52,20 @@ runs:
       run: |
         pnpm install --frozen-lockfile
         pnpm -r test
+
+    - name: 'Set up Python'
+      if: inputs.fixture == 'python'
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version-file: fixtures/python/.python-version
+
+    # In the project's own virtual environment, where the action looks for pysonar first.
+    - name: 'Test the Python fixture'
+      if: inputs.fixture == 'python'
+      shell: bash
+      working-directory: fixtures/python
+      run: |
+        python -m venv .venv
+        if [ "$RUNNER_OS" = Windows ]; then bin=.venv/Scripts; else bin=.venv/bin; fi
+        "$bin/python" -m pip install --require-hashes --no-deps -r requirements.txt
+        "$bin/python" -m pytest

@@ -49,14 +49,15 @@ Coming from v1? It no longer gets fixes, not even security fixes. See
 
 ## Supported projects
 
-| Project                                                      | What the action does                                 | Tested |
-| ------------------------------------------------------------ | ---------------------------------------------------- | ------ |
-| Maven, Gradle                                                | [Runs the build](#maven-and-gradle)                  | Yes    |
-| npm, pnpm                                                    | [Runs after your build and tests](#everything-else)  | Yes    |
-| Yarn with `nodeLinker: node-modules`, Bun                    | [Runs after your build and tests](#everything-else)  | No     |
-| Yarn Plug'n'Play                                             | [Runs after your build and tests](#everything-else)¹ | No     |
-| Python, Go, PHP and others with a `sonar-project.properties` | [Runs after your build and tests](#everything-else)² | No     |
-| .NET, C, C++ and Objective-C                                 | Not supported³                                       |        |
+| Project                                              | What the action does                                 | Tested |
+| ---------------------------------------------------- | ---------------------------------------------------- | ------ |
+| Maven, Gradle                                        | [Runs the build](#maven-and-gradle)                  | Yes    |
+| npm, pnpm                                            | [Runs after your build and tests](#everything-else)  | Yes    |
+| Python                                               | [Runs after your build and tests](#everything-else)  | Yes    |
+| Yarn with `nodeLinker: node-modules`, Bun            | [Runs after your build and tests](#everything-else)  | No     |
+| Yarn Plug'n'Play                                     | [Runs after your build and tests](#everything-else)¹ | No     |
+| Go, PHP and others with a `sonar-project.properties` | [Runs after your build and tests](#everything-else)² | No     |
+| .NET, C, C++ and Objective-C                         | Not supported³                                       |        |
 
 ¹ Rules that need types find fewer issues because there's no `node_modules` to
 read the types from. Setting `nodeLinker: node-modules` avoids this.
@@ -89,6 +90,7 @@ test:
 
 - Java and Kotlin;
 - JavaScript, TypeScript and Vue;
+- Python and Jupyter notebooks;
 - CSS, SCSS and HTML;
 - XML, YAML and JSON: Maven POMs, GitHub Actions workflows, Kubernetes
   manifests, Helm charts, CloudFormation templates, Ansible playbooks, Azure
@@ -100,7 +102,7 @@ test:
 - ABAP, COBOL, JCL, PL/I, RPG, VB6 and Flex.
 
 Files in other languages get no issues from their own analyzer on pull requests
-from forks. For example, a Maven project's Python files get none. So these pull
+from forks. For example, a Maven project's Go files get none. So these pull
 requests may show fewer issues than your own. You can
 [turn a language on](docs/configuration.md#languages-on-pull-requests-from-forks)
 at your own risk. [How it works](docs/how-it-works.md#the-analyzers) explains
@@ -171,11 +173,20 @@ steps:
       sonar-token: ${{ secrets.SONAR_TOKEN }}
 ```
 
+A Python project with a `pyproject.toml` needs nothing more either. The action
+runs pysonar, Sonar's scanner for Python, which reads the `[tool.sonar]` table:
+
+```toml
+[tool.sonar]
+sources = "src"
+python.coverage.reportPaths = "coverage.xml"
+```
+
 Other projects also need a `sonar-project.properties`, such as:
 
 ```properties
 sonar.sources=src
-sonar.python.coverage.reportPaths=coverage.xml
+sonar.go.coverage.reportPaths=coverage.out
 ```
 
 See [configuration](docs/configuration.md) for the inputs, the versions the

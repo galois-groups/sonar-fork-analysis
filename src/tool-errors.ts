@@ -84,6 +84,9 @@ export class ErrorLines {
         return /^\d{2}:\d{2}:\d{2}\.\d{3} ERROR /.test(line)
       case 'npm':
         return line.startsWith('[ERROR] ')
+      // pysonar prints the engine's log lines through its own.
+      case 'python':
+        return line.startsWith('ERROR: ')
     }
   }
 }

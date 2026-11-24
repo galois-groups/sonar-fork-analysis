@@ -139,7 +139,8 @@ export function readReport(text: string): Report {
 const TOOLS: Record<string, string> = {
   maven: 'the Maven build',
   gradle: 'the Gradle build',
-  npm: 'the npm scanner'
+  npm: 'the npm scanner',
+  python: 'pysonar'
 }
 
 export function directSummary(facts: {

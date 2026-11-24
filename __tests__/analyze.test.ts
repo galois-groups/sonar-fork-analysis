@@ -1017,7 +1017,7 @@ describe('trustedProperties', () => {
             pullRequest: { key: '7', branch: 'feature', base: 'main' }
           },
           '/tmp/scannerwork',
-          ['java', 'py', 'rust']
+          ['java', 'php', 'rust']
         )
       )
     ).toEqual({
@@ -1026,7 +1026,7 @@ describe('trustedProperties', () => {
       'sonar.working.directory': '/tmp/scannerwork',
       'sonar.sca.enabled': 'false',
       'sonar.scanner.autoconfig.enabled': 'false',
-      'sonar.lang.patterns.py': NO_FILE,
+      'sonar.lang.patterns.php': NO_FILE,
       'sonar.lang.patterns.rust': NO_FILE,
       'sonar.organization': 'org',
       'sonar.pullrequest.key': '7',
@@ -1051,13 +1051,13 @@ describe('trustedProperties', () => {
       target,
       { headSha: 'abc', branch: 'release' },
       '/tmp/scannerwork',
-      ['java', 'kotlin', 'py']
+      ['java', 'kotlin', 'php']
     )
     expect(
       [...properties.keys()].filter((key) =>
         key.startsWith('sonar.lang.patterns.')
       )
-    ).toEqual(['sonar.lang.patterns.py'])
+    ).toEqual(['sonar.lang.patterns.php'])
   })
 
   it('names branches other than the default one', () => {

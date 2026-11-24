@@ -70,16 +70,50 @@ export function parseNpmDump(text: string): Map<string, string> {
   } catch {
     fail('propertiesJSON is not JSON')
   }
-  const list = (inner as { scannerProperties?: unknown } | null)
+  return scannerProperties(inner, fail)
+}
+
+// Parses what pysonar writes to the engine's input. It writes some values as JSON numbers and booleans,
+// which the engine reads as their text. So numbers keep their text as written, e.g. 3.10 or 1e3.
+export function parsePythonDump(text: string): Map<string, string> {
+  const fail = (reason: string): never => {
+    throw new Error(
+      `The settings pysonar passed to the engine are not in the expected format: ${reason}`
+    )
+  }
+  let json: unknown
+  try {
+    json = JSON.parse(
+      text,
+      (_key, value: unknown, context?: { source?: string }) =>
+        typeof value === 'number' ? context?.source : value
+    )
+  } catch {
+    fail('not JSON')
+  }
+  return scannerProperties(json, fail, true)
+}
+
+// The scanners' format: {"scannerProperties":[{"key":…,"value":…}]}. Anything else fails rather than
+// guessing.
+function scannerProperties(
+  json: unknown,
+  fail: (reason: string) => never,
+  booleans = false
+): Map<string, string> {
+  const list = (json as { scannerProperties?: unknown } | null)
     ?.scannerProperties
   if (!Array.isArray(list)) fail('no scannerProperties list')
   const properties = new Map<string, string>()
   for (const entry of list as unknown[]) {
     const { key, value } = (entry ?? {}) as { key?: unknown; value?: unknown }
-    if (typeof key !== 'string' || typeof value !== 'string')
-      fail('a setting that is not a key and a string value')
-    if (properties.has(key as string)) fail(`${key as string} appears twice`)
-    properties.set(key as string, value as string)
+    if (typeof key !== 'string') fail('a setting without a key')
+    let text: string
+    if (typeof value === 'string') text = value
+    else if (booleans && typeof value === 'boolean') text = String(value)
+    else fail(`${key} has no string value`)
+    if (properties.has(key)) fail(`${key} appears twice`)
+    properties.set(key, text)
   }
   return properties
 }

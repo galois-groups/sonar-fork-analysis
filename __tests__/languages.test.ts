@@ -200,8 +200,8 @@ describe('serverLanguages', () => {
 describe('untestedLanguages', () => {
   it('keeps every language but the tested ones', () => {
     expect(
-      untestedLanguages(['java', 'py', 'ts', 'rust', 'secrets', 'go'])
-    ).toEqual(['py', 'rust', 'go'])
+      untestedLanguages(['java', 'php', 'ts', 'rust', 'secrets', 'go'])
+    ).toEqual(['php', 'rust', 'go'])
     expect(untestedLanguages(TESTED_LANGUAGES)).toEqual([])
   })
 })

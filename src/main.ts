@@ -60,13 +60,16 @@ import {
   directArtifactName,
   missingDump,
   npmSimulationProperties,
+  pythonSimulationProperties,
   resolveModuleBases,
+  simulationFailure,
   simulationProperties,
+  standInScript,
   stageAnalysis,
   typeInformation,
   type TypeInformation
 } from './prepare.js'
-import { parseNpmDump, parseProperties } from './properties.js'
+import { parseNpmDump, parseProperties, parsePythonDump } from './properties.js'
 import { findNewReport, snapshotReports } from './report.js'
 import { installScanner } from './scanner.js'
 import { forgetSecrets, secret } from './secrets.js'
@@ -276,19 +279,31 @@ async function simulate(
   inputs: Inputs
 ): Promise<Map<string, string>> {
   const npm = tool.name === 'npm'
-  const dump = join(temp, npm ? 'dump.json' : 'dump.properties')
+  const python = tool.name === 'python'
+  const dump = join(temp, npm || python ? 'dump.json' : 'dump.properties')
   let simulation = simulationProperties(dump)
-  if (npm) {
+  if (npm || python) {
     const placeholder = join(temp, 'placeholder.jar')
     writeFileSync(placeholder, '')
     const home = join(temp, 'sonar-home')
     mkdirSync(home)
-    simulation = npmSimulationProperties(
-      dump,
-      placeholder,
-      home,
-      inputs.hostUrl
-    )
+    if (npm) {
+      simulation = npmSimulationProperties(
+        dump,
+        placeholder,
+        home,
+        inputs.hostUrl
+      )
+    } else {
+      const script = join(temp, 'stand-in.mjs')
+      writeFileSync(script, standInScript(dump))
+      simulation = pythonSimulationProperties(
+        { node: process.execPath, script },
+        placeholder,
+        home,
+        inputs.hostUrl
+      )
+    }
   }
   const args = sonarBuildArguments(
     tool,
@@ -317,7 +332,7 @@ async function simulate(
       listeners: {
         stdout: (data) => {
           // The npm scanner prints its errors to standard output.
-          if (npm) collect(data)
+          if (npm || python) collect(data)
           errors.stdout(data)
         },
         stderr: (data) => {
@@ -329,7 +344,9 @@ async function simulate(
   )
   if (exitCode !== 0)
     throw new ToolFailure(
-      buildFailure(tool, exitCode, errorOutput),
+      python
+        ? simulationFailure(exitCode, errorOutput)
+        : buildFailure(tool, exitCode, errorOutput),
       errors.end()
     )
   if (!existsSync(dump)) throw new Error(missingDump(tool))
@@ -338,7 +355,11 @@ async function simulate(
   const text = readFileSync(dump, 'utf8')
   rmSync(dump)
   return resolveModuleBases(
-    npm ? parseNpmDump(text) : parseProperties(text),
+    npm
+      ? parseNpmDump(text)
+      : python
+        ? parsePythonDump(text)
+        : parseProperties(text),
     workingDirectory
   )
 }
@@ -402,6 +423,9 @@ function warnWithoutSettings(
 
 // Without a build to run, the action runs the scanner CLI itself.
 async function executable(tool: BuildTool, version: string): Promise<string> {
+  // Which copy runs depends on the project's environment, so the log says.
+  if (tool.name === 'python')
+    core.info(`Running ${[tool.executable, ...tool.prefix].join(' ')}`)
   return tool.name === 'scanner' ? installScanner(version) : tool.executable
 }
 

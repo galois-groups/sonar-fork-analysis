@@ -9,15 +9,20 @@ import {
   symlinkSync,
   writeFileSync
 } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve, sep } from 'node:path'
 import { runningAsRoot } from '../__fixtures__/platform.js'
 import {
   artifactName,
   npmSimulationProperties,
+  pythonSimulationProperties,
   resolveModuleBases,
+  shellQuoted,
+  simulationFailure,
   simulationProperties,
   stageAnalysis,
+  standInScript,
   typeInformation
 } from '../src/prepare.js'
 import { moduleTree } from '../src/settings.js'
@@ -82,6 +87,74 @@ describe('npmSimulationProperties', () => {
         'https://sonar.example.org'
       )
     ).toEqual([...skips, '-Dsonar.host.url=https://sonar.example.org'])
+  })
+})
+
+describe('pythonSimulationProperties', () => {
+  it('runs the stand-in for Java, and names the server only when the input does', () => {
+    const standIn = { node: '/node', script: '/tmp/stand-in.mjs' }
+    const settings = [
+      '-Dsonar.token=placeholder',
+      '-Dsonar.projectKey=placeholder',
+      '-Dsonar.scanner.javaExePath=/node',
+      "-Dsonar.scanner.javaOpts='/tmp/stand-in.mjs'",
+      '-Dsonar.scanner.engineJarPath=/tmp/placeholder.jar',
+      '-Dsonar.userHome=/tmp/home'
+    ]
+    expect(
+      pythonSimulationProperties(
+        standIn,
+        '/tmp/placeholder.jar',
+        '/tmp/home',
+        ''
+      )
+    ).toEqual(settings)
+    expect(
+      pythonSimulationProperties(
+        standIn,
+        '/tmp/placeholder.jar',
+        '/tmp/home',
+        'https://sonar.example.org'
+      )
+    ).toEqual([...settings, '-Dsonar.host.url=https://sonar.example.org'])
+  })
+
+  // How Python's shlex.split, which pysonar uses, reads the quoted text.
+  it.each([
+    ['/tmp/a b/stand-in.mjs', "'/tmp/a b/stand-in.mjs'"],
+    ['C:\\Temp\\stand-in.mjs', "'C:\\Temp\\stand-in.mjs'"],
+    ["/tmp/it's", `'/tmp/it'"'"'s'`]
+  ])('quotes %s for a POSIX shell', (path, quoted) => {
+    expect(shellQuoted(path)).toBe(quoted)
+  })
+
+  it('tells an old pysonar, which refuses the placeholder token, to update', () => {
+    expect(simulationFailure(2, 'ERROR: Missing property')).toBe(
+      'pysonar failed with exit code 2'
+    )
+    expect(
+      simulationFailure(
+        1,
+        'ERROR: The provided token is invalid for the server at "https://sonarcloud.io".'
+      )
+    ).toMatch(
+      /^pysonar failed with exit code 1: before 1\.8\.0, pysonar downloads the engine .* Update it to 1\.8\.0 or later$/
+    )
+  })
+
+  it('writes a script that saves its input', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'stand-in-'))
+    try {
+      const dump = join(directory, "it's dump.json")
+      const script = join(directory, 'stand-in.mjs')
+      writeFileSync(script, standInScript(dump))
+      execFileSync(process.execPath, [script, '-jar', 'engine.jar'], {
+        input: '{"scannerProperties":[]}'
+      })
+      expect(readFileSync(dump, 'utf8')).toBe('{"scannerProperties":[]}')
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
   })
 })
 

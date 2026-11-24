@@ -27,9 +27,13 @@ export function sonarBuildArguments(
   properties: string[],
   buildArguments: string[]
 ): string[] {
-  if (tool.name === 'scanner' || tool.name === 'npm') {
-    // The settings come from sonar-project.properties and package.json, not from a build, so the action
-    // runs after the workflow's own build and test steps and only starts the scanner.
+  if (
+    tool.name === 'scanner' ||
+    tool.name === 'npm' ||
+    tool.name === 'python'
+  ) {
+    // The settings come from sonar-project.properties, package.json and pyproject.toml, not from a
+    // build, so the action runs after the workflow's own build and test steps and only starts the scanner.
     if (goals.length > 0)
       throw new Error(
         'build-goals does not apply when the action runs the scanner: build and test in your own steps before the action'
@@ -63,6 +67,12 @@ export function sonarBuildArguments(
 
 const TOOL_NAMES = { maven: 'Maven', gradle: 'Gradle' }
 
+const SCANNERS = {
+  scanner: 'The Sonar scanner',
+  npm: 'The npm scanner',
+  python: 'pysonar'
+}
+
 export function buildFailure(
   tool: BuildTool,
   exitCode: number,
@@ -83,13 +93,14 @@ export function buildFailure(
       : ''
     return `The npm scanner failed with exit code ${exitCode}${engine}`
   }
+  if (tool.name === 'python') return `pysonar failed with exit code ${exitCode}`
   return `The ${TOOL_NAMES[tool.name]} build failed with exit code ${exitCode}`
 }
 
 export function missingAnalysis(tool: BuildTool): string {
   // The scanner CLI leaves a report whenever it succeeds, unless it wrote it elsewhere.
-  if (tool.name === 'scanner' || tool.name === 'npm')
-    return `The ${tool.name === 'npm' ? 'npm' : 'Sonar'} scanner succeeded but left no report in the working directory: check that sonar.projectBaseDir and sonar.working.directory stay inside it`
+  if (tool.name !== 'maven' && tool.name !== 'gradle')
+    return `${SCANNERS[tool.name]} succeeded but left no report in the working directory: check that sonar.projectBaseDir and sonar.working.directory stay inside it`
   const message = `The ${TOOL_NAMES[tool.name]} build succeeded but no Sonar analysis ran`
   // Gradle runs any single task whose name starts with 'sonar' when the plugin is missing.
   return tool.name === 'gradle'

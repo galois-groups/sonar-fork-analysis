@@ -64,7 +64,7 @@ import {
   resolveModuleBases,
   simulationFailure,
   simulationProperties,
-  standInScript,
+  STAND_IN_SCRIPT,
   stageAnalysis,
   typeInformation,
   type TypeInformation
@@ -295,8 +295,9 @@ async function simulate(
         inputs.hostUrl
       )
     } else {
+      // Next to the dump, where the script writes it.
       const script = join(temp, 'stand-in.mjs')
-      writeFileSync(script, standInScript(dump))
+      writeFileSync(script, STAND_IN_SCRIPT)
       simulation = pythonSimulationProperties(
         { node: process.execPath, script },
         placeholder,
@@ -354,14 +355,13 @@ async function simulate(
   // The dump holds the build's whole environment, so it never leaves this machine.
   const text = readFileSync(dump, 'utf8')
   rmSync(dump)
-  return resolveModuleBases(
-    npm
-      ? parseNpmDump(text)
-      : python
-        ? parsePythonDump(text)
-        : parseProperties(text),
-    workingDirectory
-  )
+  return resolveModuleBases(parseDump(tool, text), workingDirectory)
+}
+
+function parseDump(tool: BuildTool, text: string): Map<string, string> {
+  if (tool.name === 'npm') return parseNpmDump(text)
+  if (tool.name === 'python') return parsePythonDump(text)
+  return parseProperties(text)
 }
 
 // The type declarations a Node project's analysis needs from node_modules.

@@ -78715,17 +78715,15 @@ function simulationFailure(exitCode, output) {
 	return `pysonar failed with exit code ${exitCode}${/The provided token is invalid/.test(output) ? ": before 1.8.0, pysonar downloads the engine from the server first, which refuses it without a token. Update it to 1.8.0 or later" : ""}`;
 }
 function shellQuoted(text) {
-	return `'${text.replaceAll("'", `'"'"'`)}'`;
+	return `'${text.replaceAll("'", "'\"'\"'")}'`;
 }
-function standInScript(dumpFile) {
-	return [
-		"import { writeFileSync } from 'node:fs'",
-		"const chunks = []",
-		"process.stdin.on('data', (chunk) => chunks.push(chunk))",
-		`process.stdin.on('end', () => writeFileSync(${JSON.stringify(dumpFile)}, Buffer.concat(chunks)))`,
-		""
-	].join("\n");
-}
+var STAND_IN_SCRIPT = [
+	"import { writeFileSync } from 'node:fs'",
+	"const chunks = []",
+	"process.stdin.on('data', (chunk) => chunks.push(chunk))",
+	"process.stdin.on('end', () => writeFileSync(new URL('dump.json', import.meta.url), Buffer.concat(chunks)))",
+	""
+].join("\n");
 function resolveModuleBases(settings, workingDirectory) {
 	const tree = moduleTree(settings);
 	const resolved = new Map(settings);
@@ -109856,7 +109854,7 @@ async function simulate(tool, workingDirectory, temp, inputs) {
 		if (npm) simulation = npmSimulationProperties(dump, placeholder, home, inputs.hostUrl);
 		else {
 			const script = join(temp, "stand-in.mjs");
-			writeFileSync(script, standInScript(dump));
+			writeFileSync(script, STAND_IN_SCRIPT);
 			simulation = pythonSimulationProperties({
 				node: process.execPath,
 				script
@@ -109891,7 +109889,12 @@ async function simulate(tool, workingDirectory, temp, inputs) {
 	if (!existsSync$1(dump)) throw new Error(missingDump(tool));
 	const text = readFileSync$1(dump, "utf8");
 	rmSync(dump);
-	return resolveModuleBases(npm ? parseNpmDump(text) : python ? parsePythonDump(text) : parseProperties(text), workingDirectory);
+	return resolveModuleBases(parseDump(tool, text), workingDirectory);
+}
+function parseDump(tool, text) {
+	if (tool.name === "npm") return parseNpmDump(text);
+	if (tool.name === "python") return parsePythonDump(text);
+	return parseProperties(text);
 }
 function nodeTypes(tool, workingDirectory, workspace) {
 	const types = typeInformation(workingDirectory, workspace);

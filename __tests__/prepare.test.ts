@@ -22,7 +22,7 @@ import {
   simulationFailure,
   simulationProperties,
   stageAnalysis,
-  standInScript,
+  STAND_IN_SCRIPT,
   typeInformation
 } from '../src/prepare.js'
 import { moduleTree } from '../src/settings.js'
@@ -142,12 +142,15 @@ describe('pythonSimulationProperties', () => {
     )
   })
 
-  it('writes a script that saves its input', () => {
+  it('has a script that saves its input next to itself', () => {
     const directory = mkdtempSync(join(tmpdir(), 'stand-in-'))
     try {
-      const dump = join(directory, "it's dump.json")
-      const script = join(directory, 'stand-in.mjs')
-      writeFileSync(script, standInScript(dump))
+      // Characters a file URL encodes.
+      const folder = join(directory, "it's 100% #mine")
+      mkdirSync(folder)
+      const dump = join(folder, 'dump.json')
+      const script = join(folder, 'stand-in.mjs')
+      writeFileSync(script, STAND_IN_SCRIPT)
       execFileSync(process.execPath, [script, '-jar', 'engine.jar'], {
         input: '{"scannerProperties":[]}'
       })

@@ -105,19 +105,18 @@ export function simulationFailure(exitCode: number, output: string): string {
 
 // Single quotes keep the backslashes of Windows paths. A quote ends them, is escaped and opens new ones.
 export function shellQuoted(text: string): string {
-  return `'${text.replaceAll("'", `'"'"'`)}'`
+  return `'${text.replaceAll("'", "'\"'\"'")}'`
 }
 
-// The script that stands in for Java: it saves what pysonar writes to its input.
-export function standInScript(dumpFile: string): string {
-  return [
-    "import { writeFileSync } from 'node:fs'",
-    'const chunks = []',
-    "process.stdin.on('data', (chunk) => chunks.push(chunk))",
-    `process.stdin.on('end', () => writeFileSync(${JSON.stringify(dumpFile)}, Buffer.concat(chunks)))`,
-    ''
-  ].join('\n')
-}
+// The script that stands in for Java. It saves what pysonar writes to its input as dump.json next to
+// itself, so no path goes into its code.
+export const STAND_IN_SCRIPT = [
+  "import { writeFileSync } from 'node:fs'",
+  'const chunks = []',
+  "process.stdin.on('data', (chunk) => chunks.push(chunk))",
+  "process.stdin.on('end', () => writeFileSync(new URL('dump.json', import.meta.url), Buffer.concat(chunks)))",
+  ''
+].join('\n')
 
 // The npm scanner passes sonar.projectBaseDir as written, often relative, and none for a module that
 // sets none. The engine resolves a module's against its parent's base directory, and derives a missing

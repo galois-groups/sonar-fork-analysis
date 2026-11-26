@@ -70,6 +70,54 @@ export function npmSimulationProperties(
   return properties
 }
 
+// pysonar has no simulation mode. Like every scanner, it passes the settings to the engine as JSON on
+// standard input. So in place of Java it runs Node with a script that saves that input and exits.
+// pysonar wants a token and a project key first; the filter drops both placeholders. On SonarQube
+// Cloud nothing contacts the server. SonarQube Server is first asked for its version.
+export function pythonSimulationProperties(
+  standIn: { node: string; script: string },
+  placeholder: string,
+  userHome: string,
+  hostUrl: string
+): string[] {
+  const properties = [
+    '-Dsonar.token=placeholder',
+    '-Dsonar.projectKey=placeholder',
+    `-Dsonar.scanner.javaExePath=${standIn.node}`,
+    // pysonar splits it the way a POSIX shell does.
+    `-Dsonar.scanner.javaOpts=${shellQuoted(standIn.script)}`,
+    // pysonar only checks that it can read the file.
+    `-Dsonar.scanner.engineJarPath=${placeholder}`,
+    `-Dsonar.userHome=${userHome}`
+  ]
+  if (hostUrl) properties.push(`-Dsonar.host.url=${hostUrl}`)
+  return properties
+}
+
+// Before 1.8.0, pysonar ignores engineJarPath and downloads the engine, which fails with the
+// placeholder token.
+export function simulationFailure(exitCode: number, output: string): string {
+  const old = /The provided token is invalid/.test(output)
+    ? ': before 1.8.0, pysonar downloads the engine from the server first, which refuses it without a token. Update it to 1.8.0 or later'
+    : ''
+  return `pysonar failed with exit code ${exitCode}${old}`
+}
+
+// Single quotes keep the backslashes of Windows paths. A quote ends them, is escaped and opens new ones.
+export function shellQuoted(text: string): string {
+  return `'${text.replaceAll("'", "'\"'\"'")}'`
+}
+
+// The script that stands in for Java. It saves what pysonar writes to its input as dump.json next to
+// itself, so no path goes into its code.
+export const STAND_IN_SCRIPT = [
+  "import { writeFileSync } from 'node:fs'",
+  'const chunks = []',
+  "process.stdin.on('data', (chunk) => chunks.push(chunk))",
+  "process.stdin.on('end', () => writeFileSync(new URL('dump.json', import.meta.url), Buffer.concat(chunks)))",
+  ''
+].join('\n')
+
 // The npm scanner passes sonar.projectBaseDir as written, often relative, and none for a module that
 // sets none. The engine resolves a module's against its parent's base directory, and derives a missing
 // one from the module id, so this does the same before the paths are staged. Other tools write
@@ -150,6 +198,8 @@ export function missingDump(tool: BuildTool): string {
     return 'The Sonar scanner succeeded but wrote no analysis settings'
   if (tool.name === 'npm')
     return 'The npm scanner succeeded but wrote no analysis settings; the fork path needs @sonar/scan 4.2.7 or later'
+  if (tool.name === 'python')
+    return "pysonar succeeded but didn't pass its settings to the engine: check that sonar.scanner.dryRun is not set"
   return `The ${tool.name === 'maven' ? 'Maven' : 'Gradle'} build succeeded but its Sonar plugin wrote no analysis settings; the fork path needs ${MINIMUM_PLUGIN[tool.name]} or later`
 }
 

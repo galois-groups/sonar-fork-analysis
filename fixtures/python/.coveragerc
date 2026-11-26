@@ -1,0 +1,6 @@
+[run]
+source = src
+branch = True
+# Sonar matches report paths against the project's files.
+relative_files = True
+omit = src/fixture/generated.py

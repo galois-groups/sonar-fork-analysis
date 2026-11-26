@@ -1,7 +1,13 @@
-import { describe, it, expect, afterAll } from 'vitest'
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { describe, it, expect, afterAll, afterEach } from 'vitest'
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { windows } from '../__fixtures__/platform.js'
 import { detectBuildTool } from '../src/build-tool.js'
 
@@ -105,6 +111,71 @@ describe('detectBuildTool', () => {
     ).toBe('npm')
   })
 
+  describe('pysonar', () => {
+    const path = process.env.PATH
+    const pathExt = process.env.PATHEXT
+
+    afterEach(() => {
+      process.env.PATH = path
+      if (pathExt === undefined) delete process.env.PATHEXT
+      else process.env.PATHEXT = pathExt
+    })
+
+    function noPysonarOnPath(): void {
+      process.env.PATH = project()
+    }
+
+    function venvPysonar(directory: string): string {
+      const bin = windows
+        ? join(directory, '.venv', 'Scripts')
+        : join(directory, '.venv', 'bin')
+      mkdirSync(bin, { recursive: true })
+      const file = join(bin, windows ? 'pysonar.exe' : 'pysonar')
+      writeFileSync(file, '')
+      return file
+    }
+
+    it('runs the latest release through pipx for a project with pyproject.toml', () => {
+      noPysonarOnPath()
+      expect(detectBuildTool(project('pyproject.toml'))).toEqual({
+        name: 'python',
+        executable: 'pipx',
+        prefix: ['run', 'pysonar']
+      })
+    })
+
+    it("prefers the project's virtual environment, then the PATH", () => {
+      const directory = project('pyproject.toml')
+      const onPath = project()
+      writeFileSync(join(onPath, windows ? 'pysonar.exe' : 'pysonar'), '')
+      process.env.PATH = `${project()}${delimiter}${onPath}`
+      process.env.PATHEXT = '.COM;.EXE'
+      expect(detectBuildTool(directory).executable).toBe('pysonar')
+      const venv = venvPysonar(directory)
+      expect(detectBuildTool(directory).executable).toBe(venv)
+    })
+
+    it('ignores a directory named pysonar', () => {
+      const onPath = project()
+      mkdirSync(join(onPath, windows ? 'pysonar.exe' : 'pysonar'))
+      process.env.PATH = onPath
+      expect(detectBuildTool(project('pyproject.toml')).executable).toBe('pipx')
+    })
+
+    it('keeps the scanner CLI for a Python project with sonar-project.properties, unless asked', () => {
+      noPysonarOnPath()
+      const directory = project('pyproject.toml', 'sonar-project.properties')
+      expect(detectBuildTool(directory).name).toBe('scanner')
+      expect(detectBuildTool(directory, 'python').name).toBe('python')
+    })
+
+    it('prefers a Node project to pyproject.toml', () => {
+      expect(
+        detectBuildTool(project('package.json', 'pyproject.toml')).name
+      ).toBe('npm')
+    })
+  })
+
   it('prefers the Java build to the scanner settings next to it', () => {
     expect(
       detectBuildTool(project('pom.xml', 'sonar-project.properties')).name
@@ -125,7 +196,7 @@ describe('detectBuildTool', () => {
 
   it('points at working-directory when nothing is found', () => {
     expect(() => detectBuildTool(project('README.md'))).toThrow(
-      /No Maven or Gradle build, package.json or sonar-project.properties found in .*, set the working-directory input/
+      /No Maven or Gradle build, package.json, sonar-project.properties or pyproject.toml found in .*, set the working-directory input/
     )
   })
 })

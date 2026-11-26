@@ -13,6 +13,8 @@ export const TESTED_LANGUAGES = [
   'kotlin',
   'js',
   'ts',
+  'py',
+  'ipynb',
   'css',
   'web',
   'xml',

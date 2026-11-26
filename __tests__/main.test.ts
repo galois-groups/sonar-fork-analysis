@@ -11,6 +11,7 @@ import {
   symlinkSync,
   writeFileSync
 } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { dirname, join, sep } from 'node:path'
 import * as artifact from '../__fixtures__/artifact.js'
@@ -32,7 +33,7 @@ vi.doMock('../src/scanner.js', async (importOriginal) => ({
 }))
 vi.doMock('@actions/artifact', () => artifact)
 // The server's languages, which the analysis asks for.
-const serverLanguages = vi.fn(async () => ['java', 'ts', 'py', 'rust'])
+const serverLanguages = vi.fn(async () => ['java', 'ts', 'php', 'rust'])
 // The server the scanner names in simulation mode.
 const scannerServer = vi.fn<typeof import('../src/languages.js').scannerServer>(
   async () => 'https://sonarcloud.io'
@@ -912,6 +913,135 @@ describe('run in prepare mode', () => {
     expect(artifact.uploadArtifact).not.toHaveBeenCalled()
   })
 
+  // Plays pysonar: starts the stand-in it was given for Java, as pysonar would, with the settings
+  // on its input. So the stand-in script really runs.
+  function simulatePysonar(settings: Record<string, unknown>): void {
+    exec.mockImplementation(async (_tool, args) => {
+      const value = (name: string): string =>
+        args!
+          .find((arg) => arg.startsWith(`-D${name}=`))!
+          .slice(name.length + 3)
+      const scannerProperties = Object.entries(settings).map(([key, v]) => ({
+        key,
+        value: v
+      }))
+      // A path without quotes in it, so pysonar's shell-like split only takes the quotes off.
+      const script = value('sonar.scanner.javaOpts').slice(1, -1)
+      execFileSync(
+        value('sonar.scanner.javaExePath'),
+        [script, '-jar', value('sonar.scanner.engineJarPath')],
+        { input: JSON.stringify({ scannerProperties }) }
+      )
+      return 0
+    })
+  }
+
+  function pysonarInVenv(): string {
+    const path =
+      process.platform === 'win32'
+        ? join(project, '.venv', 'Scripts', 'pysonar.exe')
+        : join(project, '.venv', 'bin', 'pysonar')
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, '')
+    return path
+  }
+
+  it("reads a Python project with the project's own pysonar, offline", async () => {
+    rmSync(join(project, 'pom.xml'))
+    writeFileSync(join(project, 'pyproject.toml'), '')
+    writeFileSync(join(project, 'coverage.xml'), '<coverage/>')
+    const pysonar = pysonarInVenv()
+    simulatePysonar({
+      'sonar.projectBaseDir': project,
+      'sonar.sources': 'src',
+      'sonar.tests': 'tests',
+      'sonar.python.coverage.reportPaths': 'coverage.xml',
+      'sonar.python.version': '3.13',
+      'sonar.python.testFileHeuristic.disabled': true,
+      'sonar.verbose': false,
+      'sonar.scanner.bootstrapStartTime': 1795553148131,
+      'sonar.projectKey': 'placeholder',
+      'sonar.token': 'placeholder',
+      'sonar.host.url': 'https://sonarcloud.io'
+    })
+
+    await run()
+
+    expect(core.setFailed).not.toHaveBeenCalled()
+    const [tool, args] = exec.mock.calls[0]
+    expect(tool).toBe(pysonar)
+    expect(args).toContain('-Dsonar.token=placeholder')
+    expect(args!.some((arg) => arg.startsWith('-Dsonar.host.url='))).toBe(false)
+    expect(core.info).toHaveBeenCalledWith(`Running ${pysonar}`)
+    const [, files, staging] = artifact.uploadArtifact.mock.calls[0]
+    const shipped = JSON.parse(
+      readFileSync(join(staging, 'settings.json'), 'utf8')
+    ) as { buildTool: string; settings: Record<string, string> }
+    expect(shipped).toMatchObject({
+      buildTool: 'python',
+      settings: {
+        'sonar.projectBaseDir': '{workspace}',
+        'sonar.python.coverage.reportPaths': 'coverage.xml',
+        'sonar.python.version': '3.13',
+        'sonar.python.testFileHeuristic.disabled': 'true'
+      }
+    })
+    expect(Object.keys(shipped.settings)).not.toContain('sonar.verbose')
+    expect(files).toContain(join(staging, 'workspace', 'coverage.xml'))
+    expect(core.warning).not.toHaveBeenCalled()
+  })
+
+  it('runs the latest pysonar through pipx when the project has none', async () => {
+    rmSync(join(project, 'pom.xml'))
+    writeFileSync(join(project, 'pyproject.toml'), '')
+    process.env.PATH = join(project, 'empty')
+    inputs['sonar-host-url'] = 'https://sonar.example'
+    simulatePysonar({ 'sonar.projectBaseDir': project })
+
+    await run()
+
+    expect(core.setFailed).not.toHaveBeenCalled()
+    const [tool, args] = exec.mock.calls[0]
+    expect(tool).toBe('pipx')
+    expect(args!.slice(0, 2)).toEqual(['run', 'pysonar'])
+    expect(args).toContain('-Dsonar.host.url=https://sonar.example')
+    expect(core.info).toHaveBeenCalledWith('Running pipx run pysonar')
+  })
+
+  it('tells an old pysonar to update, from what it printed', async () => {
+    rmSync(join(project, 'pom.xml'))
+    writeFileSync(join(project, 'pyproject.toml'), '')
+    pysonarInVenv()
+    exec.mockImplementation(async (_tool, _args, options) => {
+      options!.listeners!.stdout!(
+        Buffer.from(
+          'ERROR: The provided token is invalid for the server at "https://sonarcloud.io".\n'
+        )
+      )
+      return 1
+    })
+
+    await run()
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      expect.stringMatching(/exit code 1: before 1\.8\.0, pysonar downloads/)
+    )
+  })
+
+  it("fails when pysonar didn't start the engine", async () => {
+    rmSync(join(project, 'pom.xml'))
+    writeFileSync(join(project, 'pyproject.toml'), '')
+    pysonarInVenv()
+    exec.mockResolvedValue(0)
+
+    await run()
+
+    expect(core.setFailed).toHaveBeenCalledWith(
+      "pysonar succeeded but didn't pass its settings to the engine: check that sonar.scanner.dryRun is not set"
+    )
+    expect(artifact.uploadArtifact).not.toHaveBeenCalled()
+  })
+
   it('needs the project key, which names the artifact', async () => {
     delete inputs['project-key']
 
@@ -1108,7 +1238,7 @@ describe('run in analyze mode', () => {
       '## ✅ Sonar analysis\n\nAnalysed commit <code>head&#45;sh</code>'
     )
     expect(summary()).toContain(
-      "Languages this action isn't tested with stay off: <code>py</code>, <code>rust</code>."
+      "Languages this action isn't tested with stay off: <code>php</code>, <code>rust</code>."
     )
   })
 
@@ -1146,7 +1276,7 @@ describe('run in analyze mode', () => {
   it('writes why the scanner failed and what the analysis left out', async () => {
     process.env.GITHUB_STEP_SUMMARY = join(project, 'summary.md')
     inputs['github-token'] = 'gh-token'
-    prepared({ 'sonar.lang.patterns.py': '**/*.java' })
+    prepared({ 'sonar.lang.patterns.php': '**/*.java' })
     exec.mockImplementation(async (_tool, _args, options) => {
       options!.listeners!.stdout!(
         Buffer.from(
@@ -1162,7 +1292,7 @@ describe('run in analyze mode', () => {
       'The Sonar scanner failed with exit code 3'
     )
     expect(summary()).toContain(
-      `## ❌ Sonar analysis failed\n\nThe Sonar scanner failed with exit code 3:\n\n<pre>${escaped('10:00:01.000 ERROR Not authorised: *** ***')}</pre>\n\nThe log has the details.\n\nLeft out of the analysis:\n\n| | |\n|---|---|\n| Settings | <code>sonar&#46;lang&#46;patterns&#46;py</code> |`
+      `## ❌ Sonar analysis failed\n\nThe Sonar scanner failed with exit code 3:\n\n<pre>${escaped('10:00:01.000 ERROR Not authorised: *** ***')}</pre>\n\nThe log has the details.\n\nLeft out of the analysis:\n\n| | |\n|---|---|\n| Settings | <code>sonar&#46;lang&#46;patterns&#46;php</code> |`
     )
     expect(summary()).toMatch(/\n\n2 warnings: see the annotations\.\n$/)
     expect(summary()).not.toContain('not&#95;a&#95;real')
@@ -1177,7 +1307,7 @@ describe('run in analyze mode', () => {
       'sonar.lang.patterns.java': '**/*.ts'
     })
     inputs['build-arguments'] =
-      '-Dsonar.lang.patterns.py=**/*.py\n-Dsonar.lang.patterns.java=**/*.jav'
+      '-Dsonar.lang.patterns.php=**/*.php\n-Dsonar.lang.patterns.java=**/*.jav'
 
     await run()
 
@@ -1190,7 +1320,7 @@ describe('run in analyze mode', () => {
     expect(settings).toContain('sonar.inclusions=src/**\n')
     // The build's suffixes stay, but the engine ignores them while the language is off.
     expect(settings).toContain('sonar.rust.file.suffixes=.java\n')
-    expect(settings).toContain(`sonar.lang.patterns.py=${NO_FILE}\n`)
+    expect(settings).toContain(`sonar.lang.patterns.php=${NO_FILE}\n`)
     expect(settings).toContain(`sonar.lang.patterns.rust=${NO_FILE}\n`)
     expect(settings).not.toMatch(/patterns\.(java|ts)=|\*\*\/\*\.(java|ts)/)
     expect(core.info).toHaveBeenCalledWith(
@@ -1203,18 +1333,18 @@ describe('run in analyze mode', () => {
     )
     // The scanner takes the last value it reads for a key.
     expect(args.slice(1)).toEqual([
-      '-Dsonar.lang.patterns.py=**/*.py',
+      '-Dsonar.lang.patterns.php=**/*.php',
       '-Dsonar.lang.patterns.java=**/*.jav'
     ])
     expect(core.info).toHaveBeenCalledWith(
       "The analyzers of languages this action isn't tested with stay off: rust. To turn one on, set sonar.lang.patterns.<language> in build-arguments."
     )
     expect(core.info).toHaveBeenCalledWith(
-      "build-arguments set sonar.lang.patterns.py: that language's analyzer runs with the token."
+      "build-arguments set sonar.lang.patterns.php: that language's analyzer runs with the token."
     )
     // Java is tested, so it was never off.
     expect(summary()).toContain(
-      '\n\nTurned on by build-arguments: <code>sonar&#46;lang&#46;patterns&#46;py</code>.\n\n'
+      '\n\nTurned on by build-arguments: <code>sonar&#46;lang&#46;patterns&#46;php</code>.\n\n'
     )
     const slash = sep === '/' ? '&#47;' : '&#92;'
     expect(summary()).toContain(

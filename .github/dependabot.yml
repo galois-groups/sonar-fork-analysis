@@ -53,6 +53,17 @@ updates:
       - dependency-name: '@types/node'
         update-types: ['version-update:semver-major']
 
+  - package-ecosystem: 'pip'
+    directory: '/fixtures/python'
+    schedule:
+      interval: 'weekly'
+    cooldown:
+      default-days: 7
+    groups:
+      fixtures-python:
+        patterns: ['*']
+        update-types: ['minor', 'patch']
+
   - package-ecosystem: 'npm'
     directory: '/'
     schedule:

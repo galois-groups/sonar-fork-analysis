@@ -111,12 +111,21 @@ Java and its engine. The action skips all three, so from `@sonar/scan` 5.0.0 on,
 the npm scanner needs no server at all. Older versions still download the engine
 first.
 
+pysonar, Sonar's scanner for Python, has no simulation mode. Like the other
+scanners, it starts Sonar's engine with Java and passes it every setting as
+JSON. So the action has it start Node in place of Java, with a script that saves
+those settings and exits. pysonar 1.8.0 and later then need no server on
+SonarQube Cloud. SonarQube Server is asked for its version first. Older releases
+download the engine first, which fails without a token. How pysonar passes the
+settings isn't documented either, but every Sonar scanner passes them the same
+way.
+
 ## What the Sonar workflow does
 
-It never runs Maven, Gradle, npm or a wrapper script. It checks out the pull
-request, unpacks the artifact and runs Sonar's scanner. The scanner reads the
-pull request's files but never runs them. Most of its work happens in Sonar's
-engine, which the scanner downloads from the server. The engine runs one
+It never runs Maven, Gradle, npm, pysonar or a wrapper script. It checks out the
+pull request, unpacks the artifact and runs Sonar's scanner. The scanner reads
+the pull request's files but never runs them. Most of its work happens in
+Sonar's engine, which the scanner downloads from the server. The engine runs one
 analyzer per language.
 
 ### The checkout
@@ -234,6 +243,12 @@ none of the project's configuration files (ESLint, Babel, TypeScript and others)
 and loaded no code from its `node_modules`. It only read `tsconfig` files and
 type declarations as data.
 
+The Python analyzer brings the types of Python's standard library and of common
+packages. It never reads a virtual environment or installed packages, so pull
+requests from forks get the same types as your own. It reads every
+`pyproject.toml` and `setup.py` in the project to learn where the packages
+start. It parses `setup.py` as code, but never runs it.
+
 Sonar starts programs of its own to analyse some languages. One handles shell
 scripts, PowerShell, Groovy, R, Gosu, DataWeave, PostgreSQL and Mule
 applications. Another handles Helm charts. Like the JavaScript analyzer's
@@ -339,7 +354,7 @@ The scanner CLI decides how Java and the engine start, so each tested CLI
 analyses every sample project under these traps. Only the default CLI's results
 are compared with the direct analysis.
 
-One sample project also holds a Python file with a known issue. It checks that
+One sample project also holds a PHP file with a known issue. It checks that
 untested languages stay off on the fork path. The direct analysis must report
 the issue, but the fork path must not analyse the file.
 

@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { parseNpmDump, parseProperties } from '../src/properties.js'
+import {
+  parseNpmDump,
+  parseProperties,
+  parsePythonDump
+} from '../src/properties.js'
 
 describe('parseProperties', () => {
   it('reads keys with escaped separators, as in Maven module keys', () => {
@@ -94,13 +98,9 @@ describe('parseNpmDump', () => {
     [
       'a value that is not a string',
       dump([{ key: 'sonar.verbose', value: true }]),
-      'a setting that is not a key and a string value'
+      'sonar.verbose has no string value'
     ],
-    [
-      'an entry without a key',
-      dump([null]),
-      'a setting that is not a key and a string value'
-    ],
+    ['an entry without a key', dump([null]), 'a setting without a key'],
     [
       'a key twice',
       dump([
@@ -112,6 +112,47 @@ describe('parseNpmDump', () => {
   ])('refuses %s', (_, text, reason) => {
     expect(() => parseNpmDump(text)).toThrow(
       `The npm scanner's dump is not in the expected format: ${reason}`
+    )
+  })
+})
+
+describe('parsePythonDump', () => {
+  it('reads strings, and booleans and numbers as the engine does: as their text', () => {
+    expect(
+      parsePythonDump(
+        '{"scannerProperties": [{"key": "sonar.sources", "value": "src"}, {"key": "sonar.verbose", "value": false}, {"key": "sonar.python.version", "value": 3.10}, {"key": "sonar.scanner.socketTimeout", "value": 6e1}]}'
+      )
+    ).toEqual(
+      new Map([
+        ['sonar.sources', 'src'],
+        ['sonar.verbose', 'false'],
+        ['sonar.python.version', '3.10'],
+        ['sonar.scanner.socketTimeout', '6e1']
+      ])
+    )
+  })
+
+  it.each([
+    ['not JSON', 'sonar.projectKey=app', 'not JSON'],
+    ['no list', '{}', 'no scannerProperties list'],
+    [
+      'a list, which comes from an array in pyproject.toml',
+      '{"scannerProperties": [{"key": "sonar.sources", "value": ["src"]}]}',
+      'sonar.sources has no string value'
+    ],
+    [
+      'null',
+      '{"scannerProperties": [{"key": "sonar.tests", "value": null}]}',
+      'sonar.tests has no string value'
+    ],
+    [
+      'a key twice',
+      '{"scannerProperties": [{"key": "sonar.sources", "value": "src"}, {"key": "sonar.sources", "value": "."}]}',
+      'sonar.sources appears twice'
+    ]
+  ])('refuses %s', (_, text, reason) => {
+    expect(() => parsePythonDump(text)).toThrow(
+      `The settings pysonar passed to the engine are not in the expected format: ${reason}`
     )
   })
 })

@@ -14,6 +14,11 @@ const npm = {
   executable: 'npx',
   prefix: ['--yes', '@sonar/scan']
 }
+const python = {
+  name: 'python' as const,
+  executable: 'pipx',
+  prefix: ['run', 'pysonar']
+}
 const properties = ['-Dsonar.projectKey=key']
 
 describe('sonarProperties', () => {
@@ -108,6 +113,18 @@ describe('sonarBuildArguments for the scanner', () => {
     )
   })
 
+  it('starts pysonar the same way', () => {
+    expect(sonarBuildArguments(python, [], properties, [])).toEqual([
+      'run',
+      'pysonar',
+      '-Dsonar.projectKey=key'
+    ])
+    expect(() => sonarBuildArguments(python, ['test'], properties, [])).toThrow(
+      'build-goals does not apply'
+    )
+    expect(buildFailure(python, 2, '')).toBe('pysonar failed with exit code 2')
+  })
+
   it('tells an old npm scanner that a server refuses without a token to update', () => {
     expect(buildFailure(npm, 1, 'compilation failed')).toBe(
       'The npm scanner failed with exit code 1'
@@ -171,6 +188,12 @@ describe('missingAnalysis', () => {
   it('names the npm scanner when it left no report', () => {
     expect(missingAnalysis(npm)).toMatch(
       /^The npm scanner succeeded but left no report in the working directory/
+    )
+  })
+
+  it('names pysonar when it left no report', () => {
+    expect(missingAnalysis(python)).toMatch(
+      /^pysonar succeeded but left no report in the working directory/
     )
   })
 

@@ -117,6 +117,8 @@ const PLAIN_KEYS = new Set([
   'sonar.kotlin.source.version',
   'sonar.python.version',
   'sonar.python.xunit.skipDetails',
+  // pysonar sets it when the project declares test paths that don't exist.
+  'sonar.python.testFileHeuristic.disabled',
   'sonar.javascript.environments',
   'sonar.javascript.globals',
   'sonar.javascript.ecmaScriptVersion',
@@ -204,6 +206,8 @@ const REPLACED_KEYS = new Set([
   'sonar.moduleKey',
   'sonar.working.directory',
   'sonar.userHome',
+  // pysonar always writes it.
+  'sonar.verbose',
   'sonar.java.jdkHome',
   'sonar.skip',
   'sonar.maven.scanAll',

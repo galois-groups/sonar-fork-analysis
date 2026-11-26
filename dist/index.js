@@ -28,7 +28,7 @@ import { Readable as Readable$1 } from "stream";
 import { Buffer as Buffer$1 } from "buffer";
 import fs, { accessSync, appendFileSync, constants as constants$1, copyFileSync, cpSync, existsSync as existsSync$1, globSync, lstatSync, mkdirSync, mkdtempSync, readFileSync as readFileSync$1, readdirSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import fs$1, { realpath } from "fs/promises";
-import { basename, dirname, isAbsolute, join, relative, resolve as resolve$1, sep } from "node:path";
+import { basename, delimiter, dirname, isAbsolute, join, relative, resolve as resolve$1, sep } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { createRequire } from "module";
 // node_modules/@actions/artifact/lib/internal/shared/config.js
@@ -27797,7 +27797,7 @@ var endBefore = {
 		type: { name: "String" }
 	}
 };
-var delimiter = {
+var delimiter$1 = {
 	parameterPath: "delimiter",
 	mapper: {
 		serializedName: "delimiter",
@@ -29873,7 +29873,7 @@ var listBlobHierarchySegmentOperationSpec = {
 		restype2,
 		include1,
 		startFrom,
-		delimiter
+		delimiter$1
 	],
 	urlParameters: [url],
 	headerParameters: [
@@ -29910,7 +29910,7 @@ var listBlobHierarchySegmentApacheArrowOperationSpec = {
 		include1,
 		startFrom,
 		endBefore,
-		delimiter
+		delimiter$1
 	],
 	urlParameters: [url],
 	headerParameters: [
@@ -78239,14 +78239,33 @@ function parseNpmDump(text) {
 	} catch {
 		fail("propertiesJSON is not JSON");
 	}
-	const list = inner?.scannerProperties;
+	return scannerProperties(inner, fail);
+}
+function parsePythonDump(text) {
+	const fail = (reason) => {
+		throw new Error(`The settings pysonar passed to the engine are not in the expected format: ${reason}`);
+	};
+	let json;
+	try {
+		json = JSON.parse(text, (_key, value, context) => typeof value === "number" ? context?.source : value);
+	} catch {
+		fail("not JSON");
+	}
+	return scannerProperties(json, fail, true);
+}
+function scannerProperties(json, fail, booleans = false) {
+	const list = json?.scannerProperties;
 	if (!Array.isArray(list)) fail("no scannerProperties list");
 	const properties = /* @__PURE__ */ new Map();
 	for (const entry of list) {
 		const { key, value } = entry ?? {};
-		if (typeof key !== "string" || typeof value !== "string") fail("a setting that is not a key and a string value");
+		if (typeof key !== "string") fail("a setting without a key");
+		let text;
+		if (typeof value === "string") text = value;
+		else if (booleans && typeof value === "boolean") text = String(value);
+		else fail(`${key} has no string value`);
 		if (properties.has(key)) fail(`${key} appears twice`);
-		properties.set(key, value);
+		properties.set(key, text);
 	}
 	return properties;
 }
@@ -78315,6 +78334,7 @@ var ErrorLines = class {
 				return stream.inside;
 			case "scanner": return /^\d{2}:\d{2}:\d{2}\.\d{3} ERROR /.test(line);
 			case "npm": return line.startsWith("[ERROR] ");
+			case "python": return line.startsWith("ERROR: ");
 		}
 	}
 };
@@ -78331,6 +78351,8 @@ var TESTED_LANGUAGES = [
 	"kotlin",
 	"js",
 	"ts",
+	"py",
+	"ipynb",
 	"css",
 	"web",
 	"xml",
@@ -78510,6 +78532,7 @@ var PLAIN_KEYS = /* @__PURE__ */ new Set([
 	"sonar.kotlin.source.version",
 	"sonar.python.version",
 	"sonar.python.xunit.skipDetails",
+	"sonar.python.testFileHeuristic.disabled",
 	"sonar.javascript.environments",
 	"sonar.javascript.globals",
 	"sonar.javascript.ecmaScriptVersion",
@@ -78577,6 +78600,7 @@ var REPLACED_KEYS = /* @__PURE__ */ new Set([
 	"sonar.moduleKey",
 	"sonar.working.directory",
 	"sonar.userHome",
+	"sonar.verbose",
 	"sonar.java.jdkHome",
 	"sonar.skip",
 	"sonar.maven.scanAll",
@@ -78675,6 +78699,31 @@ function npmSimulationProperties(dumpFile, placeholder, userHome, hostUrl) {
 	if (hostUrl) properties.push(`-Dsonar.host.url=${hostUrl}`);
 	return properties;
 }
+function pythonSimulationProperties(standIn, placeholder, userHome, hostUrl) {
+	const properties = [
+		"-Dsonar.token=placeholder",
+		"-Dsonar.projectKey=placeholder",
+		`-Dsonar.scanner.javaExePath=${standIn.node}`,
+		`-Dsonar.scanner.javaOpts=${shellQuoted(standIn.script)}`,
+		`-Dsonar.scanner.engineJarPath=${placeholder}`,
+		`-Dsonar.userHome=${userHome}`
+	];
+	if (hostUrl) properties.push(`-Dsonar.host.url=${hostUrl}`);
+	return properties;
+}
+function simulationFailure(exitCode, output) {
+	return `pysonar failed with exit code ${exitCode}${/The provided token is invalid/.test(output) ? ": before 1.8.0, pysonar downloads the engine from the server first, which refuses it without a token. Update it to 1.8.0 or later" : ""}`;
+}
+function shellQuoted(text) {
+	return `'${text.replaceAll("'", "'\"'\"'")}'`;
+}
+var STAND_IN_SCRIPT = [
+	"import { writeFileSync } from 'node:fs'",
+	"const chunks = []",
+	"process.stdin.on('data', (chunk) => chunks.push(chunk))",
+	"process.stdin.on('end', () => writeFileSync(new URL('dump.json', import.meta.url), Buffer.concat(chunks)))",
+	""
+].join("\n");
 function resolveModuleBases(settings, workingDirectory) {
 	const tree = moduleTree(settings);
 	const resolved = new Map(settings);
@@ -78716,6 +78765,7 @@ var MINIMUM_PLUGIN = {
 function missingDump(tool) {
 	if (tool.name === "scanner") return "The Sonar scanner succeeded but wrote no analysis settings";
 	if (tool.name === "npm") return "The npm scanner succeeded but wrote no analysis settings; the fork path needs @sonar/scan 4.2.7 or later";
+	if (tool.name === "python") return "pysonar succeeded but didn't pass its settings to the engine: check that sonar.scanner.dryRun is not set";
 	return `The ${tool.name === "maven" ? "Maven" : "Gradle"} build succeeded but its Sonar plugin wrote no analysis settings; the fork path needs ${MINIMUM_PLUGIN[tool.name]} or later`;
 }
 function typeInformation(directory, workspace) {
@@ -79259,6 +79309,7 @@ function detectBuildTool(directory, requested = "auto") {
 		executable: "npx",
 		prefix: ["--yes", "@sonar/scan"]
 	};
+	if (name === "python") return pysonar(directory);
 	const wrapper = name === "maven" ? "mvnw" : "gradlew";
 	if (!existsSync$1(join(directory, wrapper))) return {
 		name,
@@ -79275,9 +79326,47 @@ function detectBuildTool(directory, requested = "auto") {
 		prefix: [wrapper]
 	};
 }
+function pysonar(directory) {
+	const windows = process.platform === "win32";
+	const venv = windows ? join(directory, ".venv", "Scripts", "pysonar.exe") : join(directory, ".venv", "bin", "pysonar");
+	if (isFile(venv)) return {
+		name: "python",
+		executable: venv,
+		prefix: []
+	};
+	if (onPath("pysonar", windows)) return {
+		name: "python",
+		executable: "pysonar",
+		prefix: []
+	};
+	return {
+		name: "python",
+		executable: "pipx",
+		prefix: ["run", "pysonar"]
+	};
+}
+function isFile(path) {
+	try {
+		return statSync(path).isFile();
+	} catch {
+		return false;
+	}
+}
+function onPath(command, windows) {
+	const extensions = windows ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";") : [""];
+	return (process.env.PATH ?? "").split(delimiter).filter((directory) => directory !== "").some((directory) => extensions.some((extension) => isFile(join(directory, command + extension))));
+}
+var NAMES = [
+	"maven",
+	"gradle",
+	"npm",
+	"python",
+	"scanner"
+];
 function checked(requested) {
-	if (requested === "maven" || requested === "gradle" || requested === "npm" || requested === "scanner") return requested;
-	throw new Error(`Unknown build tool '${requested}', expected one of: auto, maven, gradle, npm, scanner`);
+	const name = NAMES.find((known) => known === requested);
+	if (name) return name;
+	throw new Error(`Unknown build tool '${requested}', expected one of: auto, ${NAMES.join(", ")}`);
 }
 function detectName(directory) {
 	const maven = existsSync$1(join(directory, "pom.xml"));
@@ -79287,7 +79376,8 @@ function detectName(directory) {
 	if (gradle) return "gradle";
 	if (existsSync$1(join(directory, "package.json"))) return "npm";
 	if (existsSync$1(join(directory, "sonar-project.properties"))) return "scanner";
-	throw new Error(`No Maven or Gradle build, package.json or sonar-project.properties found in '${directory}', set the working-directory input`);
+	if (existsSync$1(join(directory, "pyproject.toml"))) return "python";
+	throw new Error(`No Maven or Gradle build, package.json, sonar-project.properties or pyproject.toml found in '${directory}', set the working-directory input`);
 }
 // src/direct.ts
 var DEFAULT_GOALS = {
@@ -79302,7 +79392,7 @@ function sonarProperties(settings) {
 	return properties;
 }
 function sonarBuildArguments(tool, goals, properties, buildArguments) {
-	if (tool.name === "scanner" || tool.name === "npm") {
+	if (tool.name === "scanner" || tool.name === "npm" || tool.name === "python") {
 		if (goals.length > 0) throw new Error("build-goals does not apply when the action runs the scanner: build and test in your own steps before the action");
 		return [
 			...tool.prefix,
@@ -79334,14 +79424,20 @@ var TOOL_NAMES = {
 	maven: "Maven",
 	gradle: "Gradle"
 };
+var SCANNERS = {
+	scanner: "The Sonar scanner",
+	npm: "The npm scanner",
+	python: "pysonar"
+};
 function buildFailure(tool, exitCode, errorOutput) {
 	if (tool.name === "gradle" && /Task 'sonar' (?:not found|is ambiguous)/.test(errorOutput)) return `The Gradle build has no 'sonar' task: apply the org.sonarqube plugin, see ${GRADLE_PLUGIN_GUIDE}`;
 	if (tool.name === "scanner") return `The Sonar scanner failed with exit code ${exitCode}`;
 	if (tool.name === "npm") return `The npm scanner failed with exit code ${exitCode}${/status code 401/.test(errorOutput) ? ": before 5.0.0, @sonar/scan downloads the engine from the server first, which this server refuses without a token. Update it to 5.0.0 or later" : ""}`;
+	if (tool.name === "python") return `pysonar failed with exit code ${exitCode}`;
 	return `The ${TOOL_NAMES[tool.name]} build failed with exit code ${exitCode}`;
 }
 function missingAnalysis(tool) {
-	if (tool.name === "scanner" || tool.name === "npm") return `The ${tool.name === "npm" ? "npm" : "Sonar"} scanner succeeded but left no report in the working directory: check that sonar.projectBaseDir and sonar.working.directory stay inside it`;
+	if (tool.name !== "maven" && tool.name !== "gradle") return `${SCANNERS[tool.name]} succeeded but left no report in the working directory: check that sonar.projectBaseDir and sonar.working.directory stay inside it`;
 	const message = `The ${TOOL_NAMES[tool.name]} build succeeded but no Sonar analysis ran`;
 	return tool.name === "gradle" ? `${message}: apply the org.sonarqube plugin, see ${GRADLE_PLUGIN_GUIDE}` : `${message}: check that sonar.skip is not set`;
 }
@@ -109482,7 +109578,8 @@ function readReport(text) {
 var TOOLS = {
 	maven: "the Maven build",
 	gradle: "the Gradle build",
-	npm: "the npm scanner"
+	npm: "the npm scanner",
+	python: "pysonar"
 };
 function directSummary(facts) {
 	const build = facts.tool === "scanner" ? `the scanner CLI ${escaped(facts.scannerVersion)}` : TOOLS[facts.tool] ?? escaped(facts.tool);
@@ -109746,14 +109843,23 @@ async function prepare(inputs) {
 }
 async function simulate(tool, workingDirectory, temp, inputs) {
 	const npm = tool.name === "npm";
-	const dump = join(temp, npm ? "dump.json" : "dump.properties");
+	const python = tool.name === "python";
+	const dump = join(temp, npm || python ? "dump.json" : "dump.properties");
 	let simulation = simulationProperties(dump);
-	if (npm) {
+	if (npm || python) {
 		const placeholder = join(temp, "placeholder.jar");
 		writeFileSync(placeholder, "");
 		const home = join(temp, "sonar-home");
 		mkdirSync(home);
-		simulation = npmSimulationProperties(dump, placeholder, home, inputs.hostUrl);
+		if (npm) simulation = npmSimulationProperties(dump, placeholder, home, inputs.hostUrl);
+		else {
+			const script = join(temp, "stand-in.mjs");
+			writeFileSync(script, STAND_IN_SCRIPT);
+			simulation = pythonSimulationProperties({
+				node: process.execPath,
+				script
+			}, placeholder, home, inputs.hostUrl);
+		}
 	}
 	const args = sonarBuildArguments(tool, inputs.buildGoals, simulation, inputs.buildArguments);
 	info(`Preparing the analysis of the ${tool.name} build in ${workingDirectory}`);
@@ -109770,7 +109876,7 @@ async function simulate(tool, workingDirectory, temp, inputs) {
 		ignoreReturnCode: true,
 		listeners: {
 			stdout: (data) => {
-				if (npm) collect(data);
+				if (npm || python) collect(data);
 				errors.stdout(data);
 			},
 			stderr: (data) => {
@@ -109779,11 +109885,16 @@ async function simulate(tool, workingDirectory, temp, inputs) {
 			}
 		}
 	});
-	if (exitCode !== 0) throw new ToolFailure(buildFailure(tool, exitCode, errorOutput), errors.end());
+	if (exitCode !== 0) throw new ToolFailure(python ? simulationFailure(exitCode, errorOutput) : buildFailure(tool, exitCode, errorOutput), errors.end());
 	if (!existsSync$1(dump)) throw new Error(missingDump(tool));
 	const text = readFileSync$1(dump, "utf8");
 	rmSync(dump);
-	return resolveModuleBases(npm ? parseNpmDump(text) : parseProperties(text), workingDirectory);
+	return resolveModuleBases(parseDump(tool, text), workingDirectory);
+}
+function parseDump(tool, text) {
+	if (tool.name === "npm") return parseNpmDump(text);
+	if (tool.name === "python") return parsePythonDump(text);
+	return parseProperties(text);
 }
 function nodeTypes(tool, workingDirectory, workspace) {
 	const types = typeInformation(workingDirectory, workspace);
@@ -109803,6 +109914,7 @@ function warnWithoutSettings(tool, directory, buildArguments) {
 	if (tool.name === "scanner" && !existsSync$1(join(directory, "sonar-project.properties")) && !buildArguments.some((arg) => arg.startsWith("-Dsonar.sources="))) warn(`No sonar-project.properties in ${directory}, so the scanner analyses the whole directory: add one with sonar.sources or point working-directory at the project`);
 }
 async function executable(tool, version) {
+	if (tool.name === "python") info(`Running ${[tool.executable, ...tool.prefix].join(" ")}`);
 	return tool.name === "scanner" ? installScanner(version) : tool.executable;
 }
 function tempDirectory() {

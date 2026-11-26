@@ -19,6 +19,13 @@ build/
 .gradle/
 # The Node and npm frontend-maven-plugin installs.
 fixtures/maven/frontend/node/
+# The Python fixture's environment and test output.
+fixtures/python/.venv/
+fixtures/python/.coverage
+fixtures/python/coverage.xml
+fixtures/python/test-results.xml
+__pycache__/
+.pytest_cache/
 
 # Fake packages for the Node fixtures' traps; no package manager touches this directory.
 !fixtures/node_modules

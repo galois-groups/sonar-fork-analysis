@@ -5,7 +5,7 @@ vi.doMock('@actions/core', () => core)
 const { ErrorLines } = await import('../src/tool-errors.js')
 const { forgetSecrets, secret } = await import('../src/secrets.js')
 
-type Tool = 'maven' | 'gradle' | 'npm' | 'scanner'
+type Tool = 'maven' | 'gradle' | 'npm' | 'python' | 'scanner'
 
 // The whole output in one chunk on one stream, as exec hands it to a listener.
 function errors(
@@ -97,6 +97,13 @@ describe('ErrorLines', () => {
       '[ERROR] Bootstrapper: Failed to fetch server version: Error: connect ECONNREFUSED 127.0.0.1:9',
       '[ERROR] Bootstrapper: Verify that http://127.0.0.1:9 is a valid SonarQube server'
     ])
+    expect(
+      errors(
+        'python',
+        'INFO: Starting Pysonar 1.11.0.6012, the Sonar scanner CLI for Python\nERROR: Error while fetching the analysis version\nINFO: For more details, please enable debug logging by passing the --verbose option.\n',
+        'stderr'
+      )
+    ).toEqual(['ERROR: Error while fetching the analysis version'])
   })
 
   it('keeps 20 lines: the first of a block, the last of the scanners', () => {

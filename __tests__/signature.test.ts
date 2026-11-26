@@ -267,9 +267,9 @@ describe('mergeKeys', () => {
       format: 'object'
     })
     const copy = async (): Promise<openpgp.PublicKey> => {
-      const key = await openpgp.readKey({
-        armoredKey: ours.key.toPublic().armor()
-      })
+      const key = (
+        await openpgp.readKey({ armoredKey: ours.key.toPublic().armor() })
+      ).toPublic()
       key.subkeys[0]?.bindingSignatures.push(
         ...(extended.subkeys[0]?.bindingSignatures ?? [])
       )
